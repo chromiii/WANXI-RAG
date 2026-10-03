@@ -168,6 +168,63 @@ Get-Content data\private\evidence_normalized.jsonl -Encoding UTF8 -TotalCount 3
 
 完整页面 PNG 是引用预览资产，不作为重复正文文档与文本 chunk 竞争 Top-K。正常页面通过文本召回后直接带出整页视觉证据；文本稀疏页面后续再使用 OCR 增强。
 
+
+## Dense embedding + Hybrid retrieval
+
+规范化完成后，安装可选的本地 ML 依赖：
+
+```powershell
+py -m pip install -r requirements-ml.txt
+```
+
+首次运行会下载本地 embedding 模型 `BAAI/bge-m3`。模型下载完成后，PDF 文本在本机推理，不调用托管 embedding API。
+
+确保 Elasticsearch 已启动：
+
+```powershell
+docker compose up -d elasticsearch
+```
+
+然后把 `evidence_normalized.jsonl` 本地向量化并写入 Elasticsearch：
+
+```powershell
+py -m trendee.cli index-build
+```
+
+该命令会：
+
+- 使用 `heading + content` 生成 1024 维 dense embedding；
+- 默认按 batch=8 本地计算；
+- 同一 PDF source 重建时先删除旧 chunks，避免脏数据；
+- embedding 直接写入 Elasticsearch，不额外保存向量文件；
+- 保留 page / asset_path / bbox 等引用信息。
+
+检查索引：
+
+```powershell
+py -m trendee.cli index-info
+```
+
+测试真正的 Hybrid Search：
+
+```powershell
+py -m trendee.cli hybrid-search "GEO 原生网站有哪些核心能力？"
+```
+
+检索流程为：
+
+```text
+query
+  ├─ Elasticsearch BM25
+  └─ BGE-M3 query embedding -> Elasticsearch kNN
+                 ↓
+           Python RRF fusion
+                 ↓
+              Top-K
+```
+
+RRF 在应用层实现，因此不依赖 Elasticsearch 的高级付费检索特性。返回的每个文本 chunk 都保留对应 PDF 页码与完整页面 PNG 的 `asset_path`。
+
 ## Elasticsearch 本地检索层
 
 当前本地开发使用 Elasticsearch 作为后续 Hybrid RAG 的检索基础设施。Docker 只监听 `127.0.0.1:9200`，索引数据保存在 Docker named volume `wanxi_rag_es_data`，不会写入 Git 仓库。
