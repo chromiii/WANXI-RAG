@@ -60,3 +60,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "feat: import verified WANXI RAG cloud workspace"
           git push origin HEAD:main
+
+# retry after payload.01 integrity repair
