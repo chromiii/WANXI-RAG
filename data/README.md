@@ -1,13 +1,30 @@
-# Source data in the public repository
+# Runtime data
 
-`brand_pages.json` is the validated, page-preserving extraction cache used by the cloud/offline demo.
-`brand_manifest.json` records the original source hash and parsing metadata.
+This directory is intentionally data-free in Git.
 
-The employer-provided `trendee_brand.pdf` is intentionally not committed to the public repository.
-To re-run PDF parsing locally, place the authorized source file at `data/trendee_brand.pdf` and run:
+The repository stores code, prompts, tests, configuration examples and documentation only. Real employer-provided documents and all derived knowledge artifacts are runtime data and must not be committed.
 
-```bash
-python -m trendee.cli prepare
+Keep these outside version control:
+
+- `trendee_brand.pdf` and any other employer-provided source documents
+- parsed page/chunk caches such as `brand_pages.json`
+- captured website snapshots used as runtime evidence
+- embeddings and vector indexes (FAISS, Chroma, Qdrant local storage, etc.)
+- SQLite/local databases, pickle/NumPy retrieval caches
+- demo videos and generated outputs
+- credentials and real `.env` files
+
+Recommended local layout:
+
+```text
+data/
+  README.md
+  private/          # gitignored
+    trendee_brand.pdf
+  processed/        # gitignored
+  index/            # gitignored
 ```
 
-Without the original PDF, the application uses `brand_pages.json`; citations and physical page numbers remain stable.
+For cloud development, inject the private document into the workspace/runtime through the cloud environment's private file or storage mechanism. Do not use GitHub as the data store.
+
+Synthetic fixtures that contain no Wanxi/Trendee confidential or employer-provided content may live under `tests/fixtures/` so CI can test parsing, retrieval, grounding and routing without private data.
