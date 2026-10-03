@@ -1,4 +1,5 @@
 # PDF ingestion.
+pymupdf>=1.28,<2
 pypdf>=6.1,<7
 
 # Official Elasticsearch 9.x Python client; local server is pinned in docker-compose.yml.
