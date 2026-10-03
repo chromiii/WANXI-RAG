@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.robotparser import RobotFileParser
 
-from .config import ROOT
+from .config import ROOT, runtime_data_dir
 
 SITE = "https://www.wanxitech.cn/"
 ALLOWED_HOSTS = {"www.wanxitech.cn", "wanxitech.cn"}
@@ -45,16 +45,17 @@ def parse_pdf(path):
     return pages
 
 
-def prepare_brand(data_dir=ROOT / "data", force=False):
+def prepare_brand(data_dir=None, force=False):
+    data_dir = Path(data_dir) if data_dir is not None else runtime_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
     path = data_dir / "trendee_brand.pdf"
     cache = data_dir / "brand_pages.json"
     manifest_path = data_dir / "brand_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
 
-    # The public repository intentionally does not ship the employer-provided PDF.
-    # Cloud/Codespaces/Codex environments can still run against the checked-in,
-    # page-preserving extraction cache. When the original PDF is supplied locally,
-    # its SHA-256 is verified and the cache can be regenerated normally.
+    # Source documents and derived caches are private runtime data and are not stored in Git.
+    # When an authorized source PDF is present, its SHA-256 is recorded and the page cache
+    # can be generated beside it for the current runtime only.
     if not path.exists():
         if not cache.exists():
             raise FileNotFoundError(
@@ -238,8 +239,10 @@ def fetch_site_url(url, limit=3_000_000):
         return raw.decode("utf-8", errors="replace"), response.url
 
 
-def capture_site(data_dir=ROOT / "data", max_pages=3):
-    """No arbitrary domains, logins, file uploads or forms. A failed refresh never destroys a snapshot."""
+def capture_site(data_dir=None, max_pages=3):
+    """Capture only the bounded official site into private runtime storage."""
+    data_dir = Path(data_dir) if data_dir is not None else runtime_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
     robots = RobotFileParser()
     robots_error = None
     try:
@@ -268,7 +271,7 @@ def capture_site(data_dir=ROOT / "data", max_pages=3):
         except Exception as exc:
             errors.append({"url": url, "error": type(exc).__name__})
     if not pages:
-        raise ValueError("Website capture failed; the previous checked-in snapshot was preserved")
+        raise ValueError("Website capture failed; any existing private runtime snapshot was left unchanged")
     snapshot = {"site": SITE, "captured_at_utc": now_utc(), "page_count": len(pages),
                 "robots_fetch_issue": robots_error, "errors": errors, "pages": pages,
                 "scope": "Public homepage and linked about/agent pages, up to three pages by default"}
