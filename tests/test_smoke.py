@@ -1,9 +1,16 @@
+import base64
+import json
+from pathlib import Path
+import tempfile
 import unittest
+
+import pymupdf
 
 from trendee.agents import execution_plan, rule_route
 from trendee.config import Config
 from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body
+from trendee.ingestion.pdf import extract_pdf_evidence
 
 
 class CodeOnlySmokeTests(unittest.TestCase):
@@ -46,6 +53,36 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(props["modality"]["type"], "keyword")
         self.assertFalse(props["asset_path"]["index"])
         self.assertEqual(props["content"]["analyzer"], "cjk")
+
+    def test_pdf_ingestion_extracts_text_and_image_evidence(self):
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "sample.pdf"
+            doc = pymupdf.open()
+            page = doc.new_page(width=400, height=400)
+            page.insert_text((50, 50), "GEO evidence for retrieval and citation.")
+            page.insert_image(pymupdf.Rect(50, 100, 250, 250), stream=png)
+            doc.save(source)
+            doc.close()
+
+            manifest = extract_pdf_evidence(source, root)
+            self.assertEqual(manifest["page_count"], 1)
+            self.assertGreaterEqual(manifest["text_evidence_count"], 1)
+            self.assertGreaterEqual(manifest["image_evidence_count"], 1)
+
+            records = [
+                json.loads(line)
+                for line in (root / "evidence_staging.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            modalities = {record["modality"] for record in records}
+            self.assertIn("text", modalities)
+            self.assertIn("image", modalities)
+            image = next(record for record in records if record["modality"] == "image")
+            self.assertTrue((root / image["asset_path"]).exists())
+            self.assertEqual(image["metadata"]["ocr_applied"], False)
 
     def test_live_mode_requires_secret(self):
         with self.assertRaises(ValueError):
