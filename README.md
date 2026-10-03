@@ -119,12 +119,17 @@ data/private/
   evidence_staging.jsonl
   ingestion_manifest.json
   assets/
-    <image-sha>.<ext>
+    pages/
+      p001.png
+      p002.png
+      ...
 ```
 
-`evidence_staging.jsonl` 同时包含 `text` 和 `image` evidence。图片 evidence 当前使用页标题与同页文本作为可检索上下文；OCR、embedding、Elasticsearch bulk indexing 属于后续阶段。
+`evidence_staging.jsonl` 当前包含 `text` 和 `page_image` 两类 evidence。对 PPT/宣传册式 PDF，默认将整页渲染结果作为视觉资产，因为页面通常由文本、矢量图形和小图标共同组成；单独抽取 PDF 内嵌 raster image 往往只得到 logo/icon 等碎片。
 
-可先检查 `ingestion_manifest.json` 中的页数、文本 evidence 数、图片 evidence 数以及被过滤的小图片数量，再继续建立向量索引。
+`page_image` 目前使用页标题与整页文本作为可检索代理文本，完整页面 PNG 用于后续引用预览和视觉证据展示。OCR、embedding、Elasticsearch bulk indexing 属于后续阶段；内嵌图片抽取默认关闭。
+
+可先检查 `ingestion_manifest.json` 中的页数、文本 evidence 数和 `page_image_evidence_count`，再继续建立向量索引。
 
 ## Elasticsearch 本地检索层
 
