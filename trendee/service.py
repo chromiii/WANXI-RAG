@@ -1,5 +1,6 @@
 from dataclasses import asdict
 import json
+from pathlib import Path
 import re
 import time
 
@@ -67,7 +68,12 @@ def article_markdown(value, refs):
 class Workbench:
     def __init__(self, config=None, data_dir=None):
         self.config = config or Config.from_env()
-        data_dir = runtime_data_dir() if data_dir is None else ROOT.joinpath(data_dir) if isinstance(data_dir, str) and not __import__("pathlib").Path(data_dir).is_absolute() else __import__("pathlib").Path(data_dir)
+        if data_dir is None:
+            data_dir = runtime_data_dir()
+        else:
+            data_dir = Path(data_dir).expanduser()
+            if not data_dir.is_absolute():
+                data_dir = ROOT / data_dir
         self.pages, self.brand_manifest = prepare_brand(data_dir)
         snapshot_path = data_dir / "website_snapshot.json"
         if not snapshot_path.exists():
