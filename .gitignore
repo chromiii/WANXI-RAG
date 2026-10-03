@@ -3,6 +3,9 @@
 !.env.example
 *.pem
 *.key
+.secrets/
+secrets/
+
 __pycache__/
 *.pyc
 .venv/
@@ -10,6 +13,39 @@ outputs/
 *.log
 .DS_Store
 Thumbs.db
-# Keep employer-provided/public-demo binaries out of the public repository.
+
+# Employer-provided or runtime-only source data.
+data/private/
+data/raw/
 data/trendee_brand.pdf
+data/*.pdf
 demo/*.mp4
+
+# Parsed/crawled knowledge caches: regenerate at runtime, do not version.
+data/brand_pages.json
+data/website_snapshot.json
+data/cache/
+data/processed/
+
+# Vector / retrieval indexes and local databases.
+data/index/
+data/indexes/
+data/vectorstore/
+data/vector_store/
+vectorstore/
+vector_store/
+indexes/
+*.faiss
+*.ann
+*.hnsw
+*.sqlite
+*.sqlite3
+*.db
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+# Local model/cache directories.
+.cache/
+models/
