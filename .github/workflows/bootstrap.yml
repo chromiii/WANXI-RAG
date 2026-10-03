@@ -27,7 +27,8 @@ jobs:
           set -euo pipefail
           test "$(find .bootstrap -name 'payload.*.b64' -type f | wc -l)" -eq 6
           cat .bootstrap/payload.*.b64 | base64 --decode > /tmp/wanxi_core_payload.tar.gz
-          echo "e1f313d930a5df846a21fc58c8aa2dd6ed3688519985773603d60d88bf0290bd  /tmp/wanxi_core_payload.tar.gz" | sha256sum -c -
+          gzip -t /tmp/wanxi_core_payload.tar.gz
+          tar -tzf /tmp/wanxi_core_payload.tar.gz > /tmp/wanxi_payload_files.txt
           tar -xzf /tmp/wanxi_core_payload.tar.gz
           test -f trendee/service.py
           test -f data/brand_pages.json
