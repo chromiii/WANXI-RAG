@@ -51,6 +51,17 @@ def main():
     normalize.add_argument("--max-chars", type=int, default=1000)
     sub.add_parser("index-init", help="Create the empty Elasticsearch evidence index")
     sub.add_parser("index-info", help="Show Elasticsearch health and evidence index status")
+    index_build = sub.add_parser("index-build", help="Embed normalized evidence locally and bulk-index it")
+    index_build.add_argument("--input", help="Defaults to data/private/evidence_normalized.jsonl")
+    index_build.add_argument("--model", default="BAAI/bge-m3")
+    index_build.add_argument("--batch-size", type=int, default=8)
+    index_build.add_argument("--device", default="auto", help="auto, cpu, cuda, mps, etc.")
+    hybrid = sub.add_parser("hybrid-search", help="Search Elasticsearch with BM25 + dense kNN + RRF")
+    hybrid.add_argument("query")
+    hybrid.add_argument("--top-k", type=int, default=6)
+    hybrid.add_argument("--candidate-k", type=int, default=20)
+    hybrid.add_argument("--model", default="BAAI/bge-m3")
+    hybrid.add_argument("--device", default="auto")
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
     prepare.add_argument("--refresh-site", action="store_true")
     demo = sub.add_parser("demo", help="Run and save reproducible sample cases")
@@ -91,6 +102,39 @@ def main():
     if args.command == "serve":
         from .server import serve as run_server
         run_server(args.host, args.port)
+        return
+    if args.command == "index-build":
+        from .search.pipeline import build_dense_index
+        config = Config.from_env()
+        private_dir = runtime_data_dir()
+        evidence_path = Path(args.input).expanduser() if args.input else private_dir / "evidence_normalized.jsonl"
+        save_result(
+            build_dense_index(
+                evidence_path=evidence_path,
+                elasticsearch_url=config.elasticsearch_url,
+                index_name=config.elasticsearch_index,
+                model_name=args.model,
+                batch_size=args.batch_size,
+                device=args.device,
+            ),
+            None,
+        )
+        return
+    if args.command == "hybrid-search":
+        from .search.pipeline import hybrid_query
+        config = Config.from_env()
+        save_result(
+            hybrid_query(
+                query=args.query,
+                elasticsearch_url=config.elasticsearch_url,
+                index_name=config.elasticsearch_index,
+                model_name=args.model,
+                top_k=args.top_k,
+                candidate_k=args.candidate_k,
+                device=args.device,
+            ),
+            None,
+        )
         return
     if args.command in {"index-init", "index-info"}:
         from .search.elasticsearch_store import ElasticsearchEvidenceStore, ElasticsearchSettings
