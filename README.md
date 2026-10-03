@@ -96,6 +96,36 @@ data/README.md    # 运行时数据约定
 ```
 
 
+
+## PDF ingestion
+
+将招聘方提供的 PDF 放入私有运行目录：
+
+```text
+data/private/trendee_brand.pdf
+```
+
+然后执行：
+
+```bash
+python -m trendee.cli ingest
+```
+
+该命令只在本地处理 PDF，不调用外部模型或 API。它会生成：
+
+```text
+data/private/
+  trendee_brand.pdf
+  evidence_staging.jsonl
+  ingestion_manifest.json
+  assets/
+    <image-sha>.<ext>
+```
+
+`evidence_staging.jsonl` 同时包含 `text` 和 `image` evidence。图片 evidence 当前使用页标题与同页文本作为可检索上下文；OCR、embedding、Elasticsearch bulk indexing 属于后续阶段。
+
+可先检查 `ingestion_manifest.json` 中的页数、文本 evidence 数、图片 evidence 数以及被过滤的小图片数量，再继续建立向量索引。
+
 ## Elasticsearch 本地检索层
 
 当前本地开发使用 Elasticsearch 作为后续 Hybrid RAG 的检索基础设施。Docker 只监听 `127.0.0.1:9200`，索引数据保存在 Docker named volume `wanxi_rag_es_data`，不会写入 Git 仓库。
