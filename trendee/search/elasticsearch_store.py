@@ -213,7 +213,7 @@ class ElasticsearchEvidenceStore:
                     "type": "best_fields",
                 }
             },
-            _source_excludes=["embedding"],
+            source_excludes=["embedding"],
         )
         return [self._hit_payload(hit) for hit in response["hits"]["hits"]]
 
@@ -236,7 +236,7 @@ class ElasticsearchEvidenceStore:
                 "k": k,
                 "num_candidates": candidates,
             },
-            _source_excludes=["embedding"],
+            source_excludes=["embedding"],
         )
         return [self._hit_payload(hit) for hit in response["hits"]["hits"]]
 
