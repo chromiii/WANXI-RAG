@@ -3,6 +3,7 @@ import unittest
 from trendee.agents import execution_plan, rule_route
 from trendee.config import Config
 from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
+from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body
 
 
 class CodeOnlySmokeTests(unittest.TestCase):
@@ -36,6 +37,15 @@ class CodeOnlySmokeTests(unittest.TestCase):
         names = [step["agent"] for step in plan]
         self.assertIn("website_analysis", names)
         self.assertLess(names.index("website_analysis"), names.index("geo_diagnosis"))
+
+    def test_elasticsearch_mapping_is_code_only_and_multimodal_ready(self):
+        body = evidence_index_body()
+        props = body["mappings"]["properties"]
+        self.assertEqual(props["embedding"]["dims"], EMBEDDING_DIMS)
+        self.assertEqual(props["embedding"]["similarity"], "cosine")
+        self.assertEqual(props["modality"]["type"], "keyword")
+        self.assertFalse(props["asset_path"]["index"])
+        self.assertEqual(props["content"]["analyzer"], "cjk")
 
     def test_live_mode_requires_secret(self):
         with self.assertRaises(ValueError):
