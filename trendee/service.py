@@ -4,7 +4,7 @@ import re
 import time
 
 from .agents import REGISTRY, rule_route, validate_route, execution_plan, validate_agent
-from .config import ROOT, Config
+from .config import ROOT, Config, runtime_data_dir
 from .documents import prepare_brand, now_utc
 from .grounding import validate_grounding, reference_list, used_citations, unknown_fact_request, injection_request
 from .llm import Client
@@ -65,10 +65,16 @@ def article_markdown(value, refs):
 
 
 class Workbench:
-    def __init__(self, config=None, data_dir=ROOT / "data"):
+    def __init__(self, config=None, data_dir=None):
         self.config = config or Config.from_env()
+        data_dir = runtime_data_dir() if data_dir is None else ROOT.joinpath(data_dir) if isinstance(data_dir, str) and not __import__("pathlib").Path(data_dir).is_absolute() else __import__("pathlib").Path(data_dir)
         self.pages, self.brand_manifest = prepare_brand(data_dir)
-        self.snapshot = json.loads((data_dir / "website_snapshot.json").read_text(encoding="utf-8"))
+        snapshot_path = data_dir / "website_snapshot.json"
+        if not snapshot_path.exists():
+            raise FileNotFoundError(
+                f"Missing {snapshot_path}. Run 'python -m trendee.cli prepare --refresh-site' in an authorized runtime."
+            )
+        self.snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
         self.pdf_index = Index(pdf_chunks(self.pages))
         self.site_index = Index(website_chunks(self.snapshot))
 
