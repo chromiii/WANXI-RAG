@@ -153,8 +153,17 @@ python -m trendee.cli normalize
 
 ```text
 data/private/
-  evidence_normalized.jsonl
+  evidence_normalized.jsonl      # 机器读取 / 后续 Elasticsearch
+  evidence_normalized.md         # 人工检查 / VS Code Markdown 预览
   normalization_manifest.json
+```
+
+`evidence_normalized.md` 按 PDF 页组织，每页展示标题、对应完整页面 PNG 和规范化后的 chunks。Markdown 文件使用 UTF-8 BOM，方便 Windows PowerShell / Notepad / VS Code 直接查看；JSONL 保持标准 UTF-8 作为机器数据源。
+
+如果在 Windows PowerShell 5.1 中直接查看 JSONL，请显式指定 UTF-8：
+
+```powershell
+Get-Content data\private\evidence_normalized.jsonl -Encoding UTF8 -TotalCount 3
 ```
 
 完整页面 PNG 是引用预览资产，不作为重复正文文档与文本 chunk 竞争 Top-K。正常页面通过文本召回后直接带出整页视觉证据；文本稀疏页面后续再使用 OCR 增强。
