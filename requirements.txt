@@ -1,3 +1,5 @@
-# Runtime dependency for parsing authorized PDF source files.
-# The repository intentionally contains no private knowledge-base cache.
+# PDF ingestion.
 pypdf>=6.1,<7
+
+# Official Elasticsearch 9.x Python client; local server is pinned in docker-compose.yml.
+elasticsearch==9.5.1
