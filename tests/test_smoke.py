@@ -146,6 +146,11 @@ class CodeOnlySmokeTests(unittest.TestCase):
             manifest = normalize_staging(staging)
             self.assertGreater(manifest["normalized_chunk_count"], 0)
             self.assertGreaterEqual(manifest["removed_repeated_boilerplate_blocks"], 4)
+            self.assertEqual(manifest["markdown_preview_file"], "evidence_normalized.md")
+            self.assertTrue((root / "evidence_normalized.md").exists())
+            markdown = (root / "evidence_normalized.md").read_text(encoding="utf-8-sig")
+            self.assertIn("# WANXI RAG Evidence Preview", markdown)
+            self.assertIn("![PDF Page 1](assets/pages/p001.png)", markdown)
 
             normalized = [
                 json.loads(line)
