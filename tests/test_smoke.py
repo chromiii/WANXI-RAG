@@ -11,6 +11,7 @@ from trendee.config import Config
 from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body
 from trendee.ingestion.pdf import extract_pdf_evidence
+from trendee.ingestion.normalize import normalize_staging
 
 
 class CodeOnlySmokeTests(unittest.TestCase):
@@ -84,6 +85,75 @@ class CodeOnlySmokeTests(unittest.TestCase):
             self.assertTrue((root / image["asset_path"]).exists())
             self.assertEqual(image["metadata"]["ocr_applied"], False)
             self.assertEqual(image["metadata"]["vision_model_applied"], False)
+
+    def test_normalization_merges_blocks_and_links_page_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            staging = root / "evidence_staging.jsonl"
+            records = []
+            for page in range(1, 5):
+                records.extend([
+                    {
+                        "id": f"pdf-p{page:03d}-t01",
+                        "source_id": "source-1",
+                        "source_name": "sample.pdf",
+                        "source_sha256": "abc",
+                        "page": page,
+                        "modality": "text",
+                        "heading": "GEO 报告",
+                        "content": "公司机密页眉",
+                        "asset_path": None,
+                        "bbox": [0, 0, 100, 20],
+                        "text_length": 6,
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "metadata": {},
+                    },
+                    {
+                        "id": f"pdf-p{page:03d}-t02",
+                        "source_id": "source-1",
+                        "source_name": "sample.pdf",
+                        "source_sha256": "abc",
+                        "page": page,
+                        "modality": "text",
+                        "heading": "GEO 报告",
+                        "content": f"第{page}页 GEO 正文，介绍 AI 引用、结构化内容和品牌可见性。" * 8,
+                        "asset_path": None,
+                        "bbox": [10, 30, 300, 300],
+                        "text_length": 200,
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "metadata": {},
+                    },
+                    {
+                        "id": f"pdf-p{page:03d}-page",
+                        "source_id": "source-1",
+                        "source_name": "sample.pdf",
+                        "source_sha256": "abc",
+                        "page": page,
+                        "modality": "page_image",
+                        "heading": "GEO 报告",
+                        "content": "page image surrogate",
+                        "asset_path": f"assets/pages/p{page:03d}.png",
+                        "bbox": [0, 0, 400, 400],
+                        "text_length": 20,
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "metadata": {},
+                    },
+                ])
+            staging.write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n",
+                encoding="utf-8",
+            )
+            manifest = normalize_staging(staging)
+            self.assertGreater(manifest["normalized_chunk_count"], 0)
+            self.assertGreaterEqual(manifest["removed_repeated_boilerplate_blocks"], 4)
+
+            normalized = [
+                json.loads(line)
+                for line in (root / "evidence_normalized.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertTrue(all(item["modality"] == "text" for item in normalized))
+            self.assertTrue(all(item["asset_path"].startswith("assets/pages/") for item in normalized))
+            self.assertFalse(any("公司机密页眉" in item["content"] for item in normalized))
 
     def test_live_mode_requires_secret(self):
         with self.assertRaises(ValueError):
