@@ -131,6 +131,34 @@ data/private/
 
 可先检查 `ingestion_manifest.json` 中的页数、文本 evidence 数和 `page_image_evidence_count`，再继续建立向量索引。
 
+
+## Evidence normalization
+
+原始 PDF block 只用于 staging，不直接进入向量库。完成 `ingest` 后执行：
+
+```bash
+python -m trendee.cli normalize
+```
+
+该步骤会：
+
+- 删除重复页眉/页脚和明显无意义短块；
+- 只在同一个物理页内合并相邻文本；
+- 默认目标约 700 字符、单 chunk 上限 1000 字符；
+- 生成稳定引用 ID，如 `pdf-p018-c01`；
+- 将每个文本 chunk 的 `asset_path` 绑定到对应的完整页面 PNG；
+- 标记文本过少的页面，留给后续 OCR 补充。
+
+输出：
+
+```text
+data/private/
+  evidence_normalized.jsonl
+  normalization_manifest.json
+```
+
+完整页面 PNG 是引用预览资产，不作为重复正文文档与文本 chunk 竞争 Top-K。正常页面通过文本召回后直接带出整页视觉证据；文本稀疏页面后续再使用 OCR 增强。
+
 ## Elasticsearch 本地检索层
 
 当前本地开发使用 Elasticsearch 作为后续 Hybrid RAG 的检索基础设施。Docker 只监听 `127.0.0.1:9200`，索引数据保存在 Docker named volume `wanxi_rag_es_data`，不会写入 Git 仓库。
