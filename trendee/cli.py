@@ -44,6 +44,11 @@ def main():
     ingest = sub.add_parser("ingest", help="Extract private PDF text/image evidence into local staging")
     ingest.add_argument("--pdf", help="Authorized source PDF; defaults to data/private/trendee_brand.pdf")
     ingest.add_argument("--output-dir", help="Private staging directory; defaults to WANXI_DATA_DIR/data/private")
+    normalize = sub.add_parser("normalize", help="Merge raw PDF blocks into retrieval-ready chunks")
+    normalize.add_argument("--input", help="Defaults to data/private/evidence_staging.jsonl")
+    normalize.add_argument("--output", help="Defaults to data/private/evidence_normalized.jsonl")
+    normalize.add_argument("--target-chars", type=int, default=700)
+    normalize.add_argument("--max-chars", type=int, default=1000)
     sub.add_parser("index-init", help="Create the empty Elasticsearch evidence index")
     sub.add_parser("index-info", help="Show Elasticsearch health and evidence index status")
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
@@ -61,6 +66,21 @@ def main():
         pdf_path = Path(args.pdf).expanduser() if args.pdf else private_dir / "trendee_brand.pdf"
         output_dir = Path(args.output_dir).expanduser() if args.output_dir else private_dir
         save_result(extract_pdf_evidence(pdf_path, output_dir), None)
+        return
+    if args.command == "normalize":
+        from .ingestion.normalize import normalize_staging
+        private_dir = runtime_data_dir()
+        input_path = Path(args.input).expanduser() if args.input else private_dir / "evidence_staging.jsonl"
+        output_path = Path(args.output).expanduser() if args.output else private_dir / "evidence_normalized.jsonl"
+        save_result(
+            normalize_staging(
+                input_path,
+                output_path,
+                target_chars=args.target_chars,
+                max_chars=args.max_chars,
+            ),
+            None,
+        )
         return
     if args.command == "prepare":
         pages, manifest = prepare_brand(force=True)
