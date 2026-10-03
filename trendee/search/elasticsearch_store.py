@@ -1,14 +1,10 @@
-"""Elasticsearch evidence store for hybrid RAG retrieval.
-
-Phase 1 defines the durable evidence schema and connection boundary. Embedding,
-hybrid retrieval, and reranking are added in later phases.
-"""
+"""Elasticsearch evidence store for hybrid RAG retrieval."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable, Sequence
 
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, helpers
 
 
 EMBEDDING_DIMS = 1024
@@ -16,7 +12,7 @@ DEFAULT_INDEX = "wanxi-rag-evidence-v1"
 
 
 def evidence_index_body(dims: int = EMBEDDING_DIMS) -> dict[str, Any]:
-    """Return a deterministic mapping for text and image-derived evidence."""
+    """Return a deterministic mapping for retrieval evidence."""
     if dims <= 0:
         raise ValueError("dims must be positive")
     return {
@@ -51,6 +47,34 @@ def evidence_index_body(dims: int = EMBEDDING_DIMS) -> dict[str, Any]:
     }
 
 
+def rrf_fuse(
+    channels: Sequence[Sequence[dict[str, Any]]],
+    top_k: int = 6,
+    rank_constant: int = 60,
+) -> list[dict[str, Any]]:
+    """Fuse ranked hit lists by chunk_id using deterministic reciprocal rank fusion."""
+    scores: dict[str, float] = {}
+    payloads: dict[str, dict[str, Any]] = {}
+    channel_ranks: dict[str, dict[str, int]] = {}
+
+    for channel_number, hits in enumerate(channels, 1):
+        label = f"channel_{channel_number}"
+        for rank, hit in enumerate(hits, 1):
+            chunk_id = str(hit["chunk_id"])
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (rank_constant + rank)
+            payloads.setdefault(chunk_id, hit)
+            channel_ranks.setdefault(chunk_id, {})[label] = rank
+
+    ordered = sorted(scores, key=lambda cid: (-scores[cid], cid))
+    result: list[dict[str, Any]] = []
+    for chunk_id in ordered[: max(1, top_k)]:
+        item = dict(payloads[chunk_id])
+        item["rrf_score"] = round(scores[chunk_id], 8)
+        item["rrf_ranks"] = channel_ranks[chunk_id]
+        result.append(item)
+    return result
+
+
 @dataclass(frozen=True)
 class ElasticsearchSettings:
     url: str = "http://127.0.0.1:9200"
@@ -75,12 +99,16 @@ class ElasticsearchEvidenceStore:
     def health(self) -> dict[str, Any]:
         info = self.client.info()
         health = self.client.cluster.health()
+        count = 0
+        if self.client.indices.exists(index=self.settings.index_name):
+            count = int(self.client.count(index=self.settings.index_name)["count"])
         return {
             "cluster_name": info.get("cluster_name"),
             "version": info.get("version", {}).get("number"),
             "status": health.get("status"),
             "index": self.settings.index_name,
             "index_exists": bool(self.client.indices.exists(index=self.settings.index_name)),
+            "document_count": count,
         }
 
     def ensure_index(self, dims: int = EMBEDDING_DIMS) -> bool:
@@ -92,3 +120,133 @@ class ElasticsearchEvidenceStore:
             **evidence_index_body(dims),
         )
         return True
+
+    def delete_source(self, source_id: str) -> int:
+        if not self.client.indices.exists(index=self.settings.index_name):
+            return 0
+        response = self.client.delete_by_query(
+            index=self.settings.index_name,
+            query={"term": {"source_id": source_id}},
+            conflicts="proceed",
+            refresh=True,
+        )
+        return int(response.get("deleted", 0))
+
+    def bulk_index(
+        self,
+        records: Sequence[dict[str, Any]],
+        embeddings: Sequence[Sequence[float]],
+        replace_source: bool = True,
+    ) -> dict[str, Any]:
+        if len(records) != len(embeddings):
+            raise ValueError("records and embeddings must have equal length")
+        if not records:
+            return {"indexed": 0, "deleted_previous": 0}
+
+        self.ensure_index()
+        source_ids = {str(record["source_id"]) for record in records}
+        if len(source_ids) != 1:
+            raise ValueError("bulk_index currently expects records from exactly one source")
+        source_id = next(iter(source_ids))
+        deleted = self.delete_source(source_id) if replace_source else 0
+
+        actions = []
+        for record, embedding in zip(records, embeddings):
+            if len(embedding) != EMBEDDING_DIMS:
+                raise ValueError(
+                    f"Embedding for {record.get('id')} has {len(embedding)} dimensions; "
+                    f"expected {EMBEDDING_DIMS}"
+                )
+            document = {
+                "chunk_id": record["id"],
+                "source_id": record["source_id"],
+                "source_name": record["source_name"],
+                "source_sha256": record["source_sha256"],
+                "page": int(record["page"]),
+                "modality": record.get("modality", "text"),
+                "heading": record.get("heading", ""),
+                "content": record.get("content", ""),
+                "embedding": list(embedding),
+                "asset_path": record.get("asset_path"),
+                "bbox": record.get("bbox"),
+                "text_length": int(record.get("text_length") or len(record.get("content", ""))),
+                "created_at": record["created_at"],
+                "metadata": record.get("metadata") or {},
+            }
+            actions.append({
+                "_op_type": "index",
+                "_index": self.settings.index_name,
+                "_id": record["id"],
+                "_source": document,
+            })
+
+        success, errors = helpers.bulk(
+            self.client,
+            actions,
+            refresh="wait_for",
+            raise_on_error=False,
+        )
+        if errors:
+            first = errors[0]
+            raise RuntimeError(f"Elasticsearch bulk indexing failed: {first}")
+        return {
+            "indexed": int(success),
+            "deleted_previous": deleted,
+            "source_id": source_id,
+            "index": self.settings.index_name,
+        }
+
+    @staticmethod
+    def _hit_payload(hit: dict[str, Any]) -> dict[str, Any]:
+        source = dict(hit.get("_source") or {})
+        source["score"] = float(hit.get("_score") or 0.0)
+        return source
+
+    def bm25_search(self, query: str, top_k: int = 20) -> list[dict[str, Any]]:
+        response = self.client.search(
+            index=self.settings.index_name,
+            size=max(1, top_k),
+            query={
+                "multi_match": {
+                    "query": query,
+                    "fields": ["heading^2", "content"],
+                    "type": "best_fields",
+                }
+            },
+            _source_excludes=["embedding"],
+        )
+        return [self._hit_payload(hit) for hit in response["hits"]["hits"]]
+
+    def knn_search(
+        self,
+        query_vector: Sequence[float],
+        top_k: int = 20,
+        num_candidates: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if len(query_vector) != EMBEDDING_DIMS:
+            raise ValueError(f"query vector must have {EMBEDDING_DIMS} dimensions")
+        k = max(1, top_k)
+        candidates = max(k, num_candidates or max(100, k * 5))
+        response = self.client.search(
+            index=self.settings.index_name,
+            size=k,
+            knn={
+                "field": "embedding",
+                "query_vector": list(query_vector),
+                "k": k,
+                "num_candidates": candidates,
+            },
+            _source_excludes=["embedding"],
+        )
+        return [self._hit_payload(hit) for hit in response["hits"]["hits"]]
+
+    def hybrid_search(
+        self,
+        query: str,
+        query_vector: Sequence[float],
+        top_k: int = 6,
+        candidate_k: int = 20,
+    ) -> list[dict[str, Any]]:
+        lexical = self.bm25_search(query, candidate_k)
+        dense = self.knn_search(query_vector, candidate_k)
+        return rrf_fuse([lexical, dense], top_k=top_k)
