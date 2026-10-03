@@ -9,7 +9,8 @@ import pymupdf
 from trendee.agents import execution_plan, rule_route
 from trendee.config import Config
 from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
-from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body
+from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body, rrf_fuse
+from trendee.search.embeddings import embedding_text
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
 
@@ -54,6 +55,23 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(props["modality"]["type"], "keyword")
         self.assertFalse(props["asset_path"]["index"])
         self.assertEqual(props["content"]["analyzer"], "cjk")
+
+    def test_rrf_fusion_rewards_cross_channel_hits(self):
+        lexical = [
+            {"chunk_id": "a", "content": "A"},
+            {"chunk_id": "b", "content": "B"},
+        ]
+        dense = [
+            {"chunk_id": "b", "content": "B"},
+            {"chunk_id": "c", "content": "C"},
+        ]
+        fused = rrf_fuse([lexical, dense], top_k=3)
+        self.assertEqual(fused[0]["chunk_id"], "b")
+        self.assertEqual(fused[0]["rrf_ranks"], {"channel_1": 2, "channel_2": 1})
+
+    def test_embedding_text_combines_heading_and_content(self):
+        value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
+        self.assertEqual(value, "GEO 原生网站\n结构化内容与 AI 引用")
 
     def test_pdf_ingestion_extracts_text_and_image_evidence(self):
         png = base64.b64decode(
