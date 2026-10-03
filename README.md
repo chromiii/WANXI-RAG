@@ -1,4 +1,4 @@
-# 万悉科技 AI Agent 笔试作品
+# 万悉 AI Agent
 
 ## RAG 开发入口
 
