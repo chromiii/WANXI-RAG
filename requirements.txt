@@ -1,3 +1,3 @@
-# Core runtime and cached demonstrations otherwise use the Python standard library.
-# Required only to (re)parse the PDF; the checked-in cache is hash-verified.
+# Runtime dependency for parsing authorized PDF source files.
+# The repository intentionally contains no private knowledge-base cache.
 pypdf>=6.1,<7
