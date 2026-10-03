@@ -1,0 +1,3 @@
+# Core runtime and cached demonstrations otherwise use the Python standard library.
+# Required only to (re)parse the PDF; the checked-in cache is hash-verified.
+pypdf>=6.1,<7
