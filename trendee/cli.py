@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import ROOT, Config
+from .config import ROOT, Config, runtime_data_dir
 from .documents import prepare_brand, capture_site
 from .service import Workbench
 
@@ -41,6 +41,9 @@ def main():
     search.add_argument("--top-k", type=int, default=6)
     search.add_argument("--output")
     sub.add_parser("info", help="Source status, index size and API configuration status; no secret values")
+    ingest = sub.add_parser("ingest", help="Extract private PDF text/image evidence into local staging")
+    ingest.add_argument("--pdf", help="Authorized source PDF; defaults to data/private/trendee_brand.pdf")
+    ingest.add_argument("--output-dir", help="Private staging directory; defaults to WANXI_DATA_DIR/data/private")
     sub.add_parser("index-init", help="Create the empty Elasticsearch evidence index")
     sub.add_parser("index-info", help="Show Elasticsearch health and evidence index status")
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
@@ -52,6 +55,13 @@ def main():
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+    if args.command == "ingest":
+        from .ingestion.pdf import extract_pdf_evidence
+        private_dir = runtime_data_dir()
+        pdf_path = Path(args.pdf).expanduser() if args.pdf else private_dir / "trendee_brand.pdf"
+        output_dir = Path(args.output_dir).expanduser() if args.output_dir else private_dir
+        save_result(extract_pdf_evidence(pdf_path, output_dir), None)
+        return
     if args.command == "prepare":
         pages, manifest = prepare_brand(force=True)
         result = {"pdf_pages": len(pages), "manifest": manifest}
@@ -124,5 +134,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
         raise SystemExit(str(exc)) from None
