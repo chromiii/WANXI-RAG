@@ -1,0 +1,3 @@
+# Optional local ML dependencies for dense retrieval.
+# Kept separate from the base runtime so CI and non-ML workflows stay lightweight.
+sentence-transformers==6.1.0
