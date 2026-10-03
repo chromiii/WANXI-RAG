@@ -34,6 +34,8 @@ class Config:
     model: str = "deepseek-flash"
     timeout: int = 90
     max_tokens: int = 5000
+    elasticsearch_url: str = "http://127.0.0.1:9200"
+    elasticsearch_index: str = "wanxi-rag-evidence-v1"
 
     @classmethod
     def from_env(cls):
@@ -44,6 +46,8 @@ class Config:
             model=os.getenv("LLM_MODEL", "deepseek-flash"),
             timeout=int(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
             max_tokens=int(os.getenv("LLM_MAX_TOKENS", "5000")),
+            elasticsearch_url=os.getenv("ELASTICSEARCH_URL", "http://127.0.0.1:9200").rstrip("/"),
+            elasticsearch_index=os.getenv("ELASTICSEARCH_INDEX", "wanxi-rag-evidence-v1"),
         )
 
     def mode(self, requested="auto"):
