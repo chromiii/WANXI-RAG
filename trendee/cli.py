@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import ROOT
+from .config import ROOT, Config
 from .documents import prepare_brand, capture_site
 from .service import Workbench
 
@@ -41,6 +41,8 @@ def main():
     search.add_argument("--top-k", type=int, default=6)
     search.add_argument("--output")
     sub.add_parser("info", help="Source status, index size and API configuration status; no secret values")
+    sub.add_parser("index-init", help="Create the empty Elasticsearch evidence index")
+    sub.add_parser("index-info", help="Show Elasticsearch health and evidence index status")
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
     prepare.add_argument("--refresh-site", action="store_true")
     demo = sub.add_parser("demo", help="Run and save reproducible sample cases")
@@ -59,6 +61,28 @@ def main():
     if args.command == "serve":
         from .server import serve as run_server
         run_server(args.host, args.port)
+        return
+    if args.command in {"index-init", "index-info"}:
+        from .search.elasticsearch_store import ElasticsearchEvidenceStore, ElasticsearchSettings
+        config = Config.from_env()
+        store = ElasticsearchEvidenceStore(
+            ElasticsearchSettings(
+                url=config.elasticsearch_url,
+                index_name=config.elasticsearch_index,
+            )
+        )
+        try:
+            if not store.ping():
+                raise RuntimeError(
+                    "Elasticsearch is unavailable. Start it with: docker compose up -d elasticsearch"
+                )
+            if args.command == "index-init":
+                created = store.ensure_index()
+                save_result({"created": created, **store.health()}, None)
+            else:
+                save_result(store.health(), None)
+        finally:
+            store.close()
         return
     workbench = Workbench()
     if args.command == "info":
