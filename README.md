@@ -95,6 +95,40 @@ tests/            # 不依赖私有数据的 CI 测试
 data/README.md    # 运行时数据约定
 ```
 
+
+## Elasticsearch 本地检索层
+
+当前本地开发使用 Elasticsearch 作为后续 Hybrid RAG 的检索基础设施。Docker 只监听 `127.0.0.1:9200`，索引数据保存在 Docker named volume `wanxi_rag_es_data`，不会写入 Git 仓库。
+
+启动：
+
+```bash
+docker compose up -d elasticsearch
+```
+
+检查连接：
+
+```bash
+python -m trendee.cli index-info
+```
+
+首次创建空 evidence index：
+
+```bash
+python -m trendee.cli index-init
+```
+
+当前 schema 已定义：
+
+- `content` / `heading`：CJK 文本检索字段，后续走 BM25。
+- `embedding`：1024 维 `dense_vector`，为 BGE-M3 等 embedding 预留。
+- `modality`：区分 `text`、`image` 等 evidence。
+- `page` / `source_sha256`：引用溯源与源文件一致性。
+- `asset_path`：仅保存本地私有图片路径，不保存图片本体。
+- `metadata`：扩展字段。
+
+此阶段只建立基础设施和 schema，不向 Elasticsearch 写入万悉 PDF、图片、解析缓存或 embedding。
+
 ## 当前状态
 
 核心 RAG、Grounding、LLM 边界、Agent Router 与 CLI 已进入仓库。当前清理后的 GitHub 基线刻意不携带任何真实知识库数据，因此完整万悉 Demo 需要在运行环境注入私有 PDF / 官网快照后执行。
