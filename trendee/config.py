@@ -6,6 +6,13 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def runtime_data_dir():
+    """Private runtime knowledge path; never requires data to be committed to Git."""
+    load_env()
+    configured = os.getenv("WANXI_DATA_DIR", "").strip()
+    return Path(configured).expanduser().resolve() if configured else ROOT / "data" / "private"
+
+
 def load_env(path=ROOT / ".env"):
     """Read the small documented .env format without executing shell expressions."""
     if not path.exists():
