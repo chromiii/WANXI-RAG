@@ -1,8 +1,12 @@
-"""Page-aware PDF ingestion for text and image evidence.
+"""Page-aware PDF ingestion for text plus full-page visual evidence.
 
-This module deliberately does not call any external model. Images remain private
-local assets. Image evidence is represented by page context until an optional OCR
-stage is added.
+For slide-style brochures, the meaningful visual is often the composed PDF page
+(text + vector graphics + icons), not any one embedded raster image. Therefore
+the default visual asset is a rendered full page. Embedded image extraction is
+optional and disabled by default.
+
+No external model/API is called here. All generated assets remain in the private
+runtime data directory.
 """
 from __future__ import annotations
 
@@ -17,7 +21,8 @@ from typing import Any
 import pymupdf
 
 
-MIN_IMAGE_PAGE_RATIO = 0.02
+DEFAULT_RENDER_SCALE = 2.0
+MIN_EMBEDDED_IMAGE_PAGE_RATIO = 0.08
 
 
 def _now_utc() -> str:
@@ -81,19 +86,44 @@ def _text_blocks(page: pymupdf.Page) -> list[tuple[list[float], str]]:
     return result
 
 
+def _render_page(
+    page: pymupdf.Page,
+    page_number: int,
+    pages_dir: Path,
+    scale: float,
+) -> tuple[Path, int, int]:
+    if scale <= 0:
+        raise ValueError("render_scale must be positive")
+    target = pages_dir / f"p{page_number:03d}.png"
+    pix = page.get_pixmap(
+        matrix=pymupdf.Matrix(scale, scale),
+        alpha=False,
+    )
+    pix.save(target)
+    return target, int(pix.width), int(pix.height)
+
+
 def extract_pdf_evidence(
     pdf_path: str | Path,
     output_dir: str | Path | None = None,
-    min_image_page_ratio: float = MIN_IMAGE_PAGE_RATIO,
+    render_pages: bool = True,
+    render_scale: float = DEFAULT_RENDER_SCALE,
+    include_embedded_images: bool = False,
+    min_embedded_image_page_ratio: float = MIN_EMBEDDED_IMAGE_PAGE_RATIO,
 ) -> dict[str, Any]:
-    """Extract page text blocks and meaningful embedded-image occurrences.
+    """Extract text blocks and page-render visual evidence from a PDF.
 
-    The output is private runtime data:
+    Private runtime output:
       - evidence_staging.jsonl
       - ingestion_manifest.json
-      - assets/<sha-prefix>.<ext>
+      - assets/pages/pNNN.png
+      - optionally assets/embedded/<sha>.<ext>
 
-    No embeddings are computed here and no network requests are made.
+    Page renders are the primary visual evidence because slide-style PDFs are
+    commonly composed from text, vector shapes, and small icons. Extracting
+    embedded raster objects alone loses that composition.
+
+    No embeddings, OCR, vision model, or network calls happen here.
     """
     pdf_path = Path(pdf_path).expanduser().resolve()
     if not pdf_path.exists():
@@ -107,15 +137,25 @@ def extract_pdf_evidence(
         else pdf_path.parent
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+
     assets_dir = output_dir / "assets"
+    pages_dir = assets_dir / "pages"
+    embedded_dir = assets_dir / "embedded"
     assets_dir.mkdir(parents=True, exist_ok=True)
+    if render_pages:
+        pages_dir.mkdir(parents=True, exist_ok=True)
+    if include_embedded_images:
+        embedded_dir.mkdir(parents=True, exist_ok=True)
 
     source_sha256 = _sha256_file(pdf_path)
     source_id = "wanxi-brand-" + source_sha256[:12]
     created_at = _now_utc()
     records: list[EvidenceRecord] = []
-    skipped_small_images = 0
-    unique_assets: set[str] = set()
+
+    rendered_page_count = 0
+    embedded_evidence_count = 0
+    skipped_embedded_occurrences = 0
+    unique_embedded_assets: set[str] = set()
 
     with pymupdf.open(pdf_path) as document:
         for page_index, page in enumerate(document):
@@ -123,8 +163,7 @@ def extract_pdf_evidence(
             blocks = _text_blocks(page)
             heading = _page_heading(blocks)
             page_text = _normalize(page.get_text("text", sort=True))
-            page_context = page_text[:1800]
-            page_area = max(float(page.rect.width * page.rect.height), 1.0)
+            page_context = page_text[:5000]
 
             for number, (bbox, text) in enumerate(blocks, 1):
                 records.append(
@@ -144,61 +183,114 @@ def extract_pdf_evidence(
                     )
                 )
 
-            image_number = 0
-            for image in page.get_images(full=True):
-                xref = int(image[0])
-                rects = page.get_image_rects(xref)
-                if not rects:
-                    continue
-                extracted = document.extract_image(xref)
-                image_bytes = extracted.get("image", b"")
-                if not image_bytes:
-                    continue
-                extension = str(extracted.get("ext") or "bin").lower()
-                image_sha256 = _sha256_bytes(image_bytes)
-                asset_name = f"{image_sha256[:20]}.{extension}"
-                asset_path = assets_dir / asset_name
-                if image_sha256 not in unique_assets and not asset_path.exists():
-                    asset_path.write_bytes(image_bytes)
-                unique_assets.add(image_sha256)
+            if render_pages:
+                asset_path, width, height = _render_page(
+                    page,
+                    page_number,
+                    pages_dir,
+                    render_scale,
+                )
+                relative_asset = asset_path.relative_to(output_dir).as_posix()
+                page_content = (
+                    f"第{page_number}页完整页面视觉证据。页面标题：{heading}。"
+                    f"页面文本：{page_context or '该页文本层为空。'}"
+                )
+                records.append(
+                    EvidenceRecord(
+                        id=f"pdf-p{page_number:03d}-page",
+                        source_id=source_id,
+                        source_name=pdf_path.name,
+                        source_sha256=source_sha256,
+                        page=page_number,
+                        modality="page_image",
+                        heading=heading,
+                        content=page_content,
+                        asset_path=relative_asset,
+                        bbox=[
+                            0.0,
+                            0.0,
+                            round(float(page.rect.width), 2),
+                            round(float(page.rect.height), 2),
+                        ],
+                        text_length=len(page_content),
+                        created_at=created_at,
+                        metadata={
+                            "stage": "full_page_render",
+                            "render_scale": render_scale,
+                            "pixel_width": width,
+                            "pixel_height": height,
+                            "description_method": "page_heading_plus_full_page_text",
+                            "ocr_applied": False,
+                            "vision_model_applied": False,
+                        },
+                    )
+                )
+                rendered_page_count += 1
 
-                for rect in rects:
-                    area_ratio = float(rect.width * rect.height) / page_area
-                    if area_ratio < min_image_page_ratio:
-                        skipped_small_images += 1
+            if include_embedded_images:
+                page_area = max(float(page.rect.width * page.rect.height), 1.0)
+                image_number = 0
+                for image in page.get_images(full=True):
+                    xref = int(image[0])
+                    rects = page.get_image_rects(xref)
+                    if not rects:
                         continue
-                    image_number += 1
-                    relative_asset = asset_path.relative_to(output_dir).as_posix()
-                    content = (
-                        f"第{page_number}页图片证据。页面标题：{heading}。"
-                        f"同页文本上下文：{page_context or '该页文本层为空。'}"
-                    )
-                    records.append(
-                        EvidenceRecord(
-                            id=f"pdf-p{page_number:03d}-img{image_number:02d}",
-                            source_id=source_id,
-                            source_name=pdf_path.name,
-                            source_sha256=source_sha256,
-                            page=page_number,
-                            modality="image",
-                            heading=heading,
-                            content=content,
-                            asset_path=relative_asset,
-                            bbox=[round(float(x), 2) for x in (rect.x0, rect.y0, rect.x1, rect.y1)],
-                            text_length=len(content),
-                            created_at=created_at,
-                            metadata={
-                                "stage": "image_page_context",
-                                "xref": xref,
-                                "asset_sha256": image_sha256,
-                                "asset_width": extracted.get("width"),
-                                "asset_height": extracted.get("height"),
-                                "page_area_ratio": round(area_ratio, 6),
-                                "description_method": "page_heading_plus_same_page_text",
-                                "ocr_applied": False,
-                            },
+                    extracted = document.extract_image(xref)
+                    image_bytes = extracted.get("image", b"")
+                    if not image_bytes:
+                        continue
+
+                    for rect in rects:
+                        area_ratio = float(rect.width * rect.height) / page_area
+                        if area_ratio < min_embedded_image_page_ratio:
+                            skipped_embedded_occurrences += 1
+                            continue
+
+                        extension = str(extracted.get("ext") or "bin").lower()
+                        image_sha256 = _sha256_bytes(image_bytes)
+                        asset_name = f"{image_sha256[:20]}.{extension}"
+                        asset_path = embedded_dir / asset_name
+                        if not asset_path.exists():
+                            asset_path.write_bytes(image_bytes)
+                        unique_embedded_assets.add(image_sha256)
+
+                        image_number += 1
+                        relative_asset = asset_path.relative_to(output_dir).as_posix()
+                        content = (
+                            f"第{page_number}页较大内嵌图片。页面标题：{heading}。"
+                            f"同页文本：{page_context or '该页文本层为空。'}"
                         )
-                    )
+                        records.append(
+                            EvidenceRecord(
+                                id=f"pdf-p{page_number:03d}-img{image_number:02d}",
+                                source_id=source_id,
+                                source_name=pdf_path.name,
+                                source_sha256=source_sha256,
+                                page=page_number,
+                                modality="embedded_image",
+                                heading=heading,
+                                content=content,
+                                asset_path=relative_asset,
+                                bbox=[
+                                    round(float(rect.x0), 2),
+                                    round(float(rect.y0), 2),
+                                    round(float(rect.x1), 2),
+                                    round(float(rect.y1), 2),
+                                ],
+                                text_length=len(content),
+                                created_at=created_at,
+                                metadata={
+                                    "stage": "embedded_image_context",
+                                    "xref": xref,
+                                    "asset_sha256": image_sha256,
+                                    "page_area_ratio": round(area_ratio, 6),
+                                    "description_method": "page_heading_plus_full_page_text",
+                                    "ocr_applied": False,
+                                    "vision_model_applied": False,
+                                },
+                            )
+                        )
+                        embedded_evidence_count += 1
 
         page_count = len(document)
 
@@ -210,7 +302,7 @@ def extract_pdf_evidence(
     temporary.replace(staging_path)
 
     text_count = sum(record.modality == "text" for record in records)
-    image_count = sum(record.modality == "image" for record in records)
+    page_image_count = sum(record.modality == "page_image" for record in records)
     manifest = {
         "source_id": source_id,
         "source_name": pdf_path.name,
@@ -219,12 +311,15 @@ def extract_pdf_evidence(
         "page_count": page_count,
         "evidence_count": len(records),
         "text_evidence_count": text_count,
-        "image_evidence_count": image_count,
-        "unique_asset_count": len(unique_assets),
-        "skipped_small_image_occurrences": skipped_small_images,
-        "min_image_page_ratio": min_image_page_ratio,
+        "page_image_evidence_count": page_image_count,
+        "embedded_image_evidence_count": embedded_evidence_count,
+        "rendered_page_count": rendered_page_count,
+        "unique_embedded_asset_count": len(unique_embedded_assets),
+        "skipped_embedded_image_occurrences": skipped_embedded_occurrences,
+        "render_scale": render_scale,
+        "embedded_images_enabled": include_embedded_images,
         "staging_file": staging_path.name,
-        "assets_dir": assets_dir.name,
+        "page_assets_dir": pages_dir.relative_to(output_dir).as_posix() if render_pages else None,
         "network_calls": 0,
         "embedding_status": "not_started",
         "ocr_status": "not_started",
