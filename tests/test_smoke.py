@@ -71,7 +71,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
             manifest = extract_pdf_evidence(source, root)
             self.assertEqual(manifest["page_count"], 1)
             self.assertGreaterEqual(manifest["text_evidence_count"], 1)
-            self.assertGreaterEqual(manifest["image_evidence_count"], 1)
+            self.assertEqual(manifest["page_image_evidence_count"], 1)
 
             records = [
                 json.loads(line)
@@ -79,10 +79,11 @@ class CodeOnlySmokeTests(unittest.TestCase):
             ]
             modalities = {record["modality"] for record in records}
             self.assertIn("text", modalities)
-            self.assertIn("image", modalities)
-            image = next(record for record in records if record["modality"] == "image")
+            self.assertIn("page_image", modalities)
+            image = next(record for record in records if record["modality"] == "page_image")
             self.assertTrue((root / image["asset_path"]).exists())
             self.assertEqual(image["metadata"]["ocr_applied"], False)
+            self.assertEqual(image["metadata"]["vision_model_applied"], False)
 
     def test_live_mode_requires_secret(self):
         with self.assertRaises(ValueError):
