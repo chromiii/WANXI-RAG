@@ -115,6 +115,57 @@ def _merge_blocks(
     return merged
 
 
+def _write_markdown_preview(records: list[dict[str, Any]], output_path: Path) -> Path:
+    """Write a human-readable Markdown preview without changing machine JSONL."""
+    markdown_path = output_path.with_suffix(".md")
+    lines: list[str] = [
+        "# WANXI RAG Evidence Preview",
+        "",
+        "> Human-readable preview generated from normalized evidence. "
+        "The JSONL file remains the canonical machine-readable source.",
+        "",
+    ]
+
+    current_page: int | None = None
+    page_image_written = False
+    for record in records:
+        page = int(record["page"])
+        if page != current_page:
+            current_page = page
+            page_image_written = False
+            heading = str(record.get("heading") or f"PDF 第{page}页").strip()
+            lines.extend([
+                "---",
+                "",
+                f"## Page {page} — {heading}",
+                "",
+            ])
+
+        asset_path = record.get("asset_path")
+        if asset_path and not page_image_written:
+            # Markdown preview lives beside assets/, so this relative path works
+            # directly in VS Code/GitHub-style local preview.
+            lines.extend([
+                f"![PDF Page {page}]({asset_path})",
+                "",
+            ])
+            page_image_written = True
+
+        chunk_id = record["id"]
+        lines.extend([
+            f"### Chunk `{chunk_id}`",
+            "",
+            str(record.get("content", "")).strip(),
+            "",
+            f"> Source: `{record.get('source_name', '')}` · Page: {page}",
+            "",
+        ])
+
+    # utf-8-sig adds BOM for friendlier display in Windows PowerShell/Notepad.
+    markdown_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8-sig")
+    return markdown_path
+
+
 def normalize_staging(
     staging_path: str | Path,
     output_path: str | Path | None = None,
@@ -235,10 +286,13 @@ def normalize_staging(
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     temporary.replace(output_path)
 
+    markdown_path = _write_markdown_preview(normalized, output_path)
+
     manifest = {
         "created_at": _now_utc(),
         "input_file": staging_path.name,
         "output_file": output_path.name,
+        "markdown_preview_file": markdown_path.name,
         "page_count": page_count,
         "raw_text_block_count": sum(len(v) for v in text_by_page.values()),
         "normalized_chunk_count": len(normalized),
