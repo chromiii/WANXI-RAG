@@ -345,7 +345,7 @@ class RAGWorkflow:
                 "message": "检索到了候选资料，但在安全过滤、去重和上下文预算处理后没有足够证据进入生成。",
                 "scope": scope,
                 "evidence_sufficiency": sufficiency,
-            "post_retrieval": {
+                "post_retrieval": {
                     "status_counts": processed["status_counts"],
                     "selected_ids": processed["selected_ids"],
                 },
@@ -421,6 +421,7 @@ class RAGWorkflow:
             "scope": scope,
             "task_intent": intent,
             "query_plan": query_plan,
+            "evidence_sufficiency": sufficiency,
             "post_retrieval": {
                 "status_counts": processed["status_counts"],
                 "selected_ids": processed["selected_ids"],
