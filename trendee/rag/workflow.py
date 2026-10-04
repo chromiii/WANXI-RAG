@@ -1,4 +1,4 @@
-"""Orchestration for Project 1: intent -> retrieval -> generation -> grounding."""
+"""Orchestration for Project 1: intent -> retrieval -> postprocess -> generation -> grounding."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,8 @@ from ..llm import Client
 from ..search.query_planner import passthrough_plan, validate_query_plan
 from .context import build_context
 from .generation import offline_document, render_markdown, validate_document
-from .intent import parse_task_intent
+from .intent import parse_task_intent, retrieval_seed_queries
+from .postprocess import process_retrieved_hits
 from .scope import precheck_scope, evidence_scope_check
 
 
@@ -70,16 +71,61 @@ class RAGWorkflow:
             raise ValueError(f"{label} must contain 1-2000 characters")
         return value.strip()
 
-    def _query_plan(self, topic: str, active_mode: str, client: Client) -> dict[str, Any]:
+    @staticmethod
+    def _merge_plan_with_intent_seeds(
+        plan: dict[str, Any],
+        intent: dict[str, Any],
+    ) -> dict[str, Any]:
+        original = plan["original_query"]
+        seeds = retrieval_seed_queries(intent["content_type"])
+        merged = [original]
+        # Structured introductions need schema coverage first; planner rewrites
+        # then fill any remaining slots.
+        for query in [*seeds, *plan["retrieval_queries"][1:]]:
+            value = str(query).strip()
+            if value and value not in merged:
+                merged.append(value)
+            if len(merged) >= 4:
+                break
+        return {
+            **plan,
+            "rewrite_needed": len(merged) > 1,
+            "retrieval_queries": merged,
+            "retrieval_needs": intent.get("retrieval_needs", []),
+            "reason": (
+                plan.get("reason", "")
+                + ("；已按内容类型补充 schema coverage 检索。" if seeds else "")
+            ).strip("；"),
+        }
+
+    def _query_plan(
+        self,
+        topic: str,
+        intent: dict[str, Any],
+        active_mode: str,
+        client: Client,
+    ) -> dict[str, Any]:
         if active_mode != "live":
-            return passthrough_plan(topic)
+            plan = passthrough_plan(topic)
+            return self._merge_plan_with_intent_seeds(plan, intent)
+
+        payload = {
+            "query": topic,
+            "task_intent": {
+                "content_type": intent["content_type"],
+                "content_type_label": intent["content_type_label"],
+                "goal": intent["goal"],
+                "retrieval_needs": intent.get("retrieval_needs", []),
+            },
+        }
         raw = client.json(
             _prompt("query_planner", include_common=False),
-            json.dumps({"query": topic}, ensure_ascii=False),
+            json.dumps(payload, ensure_ascii=False),
             lambda value: validate_query_plan(value, topic),
             purpose="query_planner",
         )
-        return validate_query_plan(raw, topic)
+        plan = validate_query_plan(raw, topic)
+        return self._merge_plan_with_intent_seeds(plan, intent)
 
     def run(
         self,
@@ -91,7 +137,8 @@ class RAGWorkflow:
     ) -> dict[str, Any]:
         topic = self._validate_text(topic, "topic")
         audience = self._validate_text(audience, "audience")
-        if not 1 <= int(top_k) <= 12:
+        top_k = int(top_k)
+        if not 1 <= top_k <= 12:
             raise ValueError("top_k must be between 1 and 12")
 
         active_mode = self.config.mode(mode)
@@ -119,7 +166,7 @@ class RAGWorkflow:
             messages = {
                 "greeting": "你好，我是这个项目的万悉 RAG 内容写作助手。你可以给我一个与万悉科技、GEO、AI 搜索可见性、品牌内容或产品能力相关的主题。",
                 "identity": "我是万悉科技 Project 1 的 RAG 写作助手，负责基于品宣 PDF 生成 Blog、FAQ、品牌介绍和产品介绍，并展示检索证据、页码与引用校验。",
-                "capabilities": "我支持四类内容：Blog、FAQ、品牌介绍、产品介绍。系统会进行范围判断、任务意图识别、Query Planning、Hybrid Retrieval、Reranking、证据构建、内容生成和 Grounding 校验。",
+                "capabilities": "我支持四类内容：Blog、FAQ、品牌介绍、产品介绍。系统会进行范围判断、任务意图识别、Query Planning、Hybrid Retrieval、Reranking、后检索处理、内容生成和 Grounding 校验。",
             }
             return {
                 "status": "meta",
@@ -163,33 +210,40 @@ class RAGWorkflow:
             "content_type": intent["content_type"],
             "content_type_label": intent["content_type_label"],
             "source": intent["source"],
+            "retrieval_needs": intent.get("retrieval_needs", []),
         })
 
-        query_plan = self._query_plan(topic, active_mode, client)
+        query_plan = self._query_plan(topic, intent, active_mode, client)
         trace.append({
             "step": "query_planning",
             "status": "ok",
             "rewrite_needed": query_plan["rewrite_needed"],
             "intent": query_plan["intent"],
             "query_count": len(query_plan["retrieval_queries"]),
+            "retrieval_needs": query_plan.get("retrieval_needs", []),
         })
 
+        # Rerank a wider pool than the final context Top-K so hard filters and
+        # dedup can backfill from lower-ranked safe candidates.
+        candidate_pool = min(12, max(top_k * 2, top_k + 4))
         raw_hits = self.retriever.search(
             original_query=topic,
             retrieval_queries=query_plan["retrieval_queries"],
-            top_k=int(top_k),
+            top_k=candidate_pool,
             rerank=True,
+            rerank_candidates=candidate_pool,
         )
-        hits = [adapt_pdf_hit(hit) for hit in raw_hits]
+        retrieved_hits = [adapt_pdf_hit(hit) for hit in raw_hits]
         trace.append({
             "step": "hybrid_retrieval",
-            "status": "ok" if hits else "empty",
+            "status": "ok" if retrieved_hits else "empty",
             "method": "BM25 + BGE-M3 dense + weighted RRF + cross-encoder reranker",
-            "retrieved": len(hits),
+            "candidate_pool": candidate_pool,
+            "retrieved": len(retrieved_hits),
         })
 
         if scope["scope"] == "ambiguous":
-            verified_scope = evidence_scope_check(topic, hits)
+            verified_scope = evidence_scope_check(topic, retrieved_hits)
             trace.append({
                 "step": "scope_verification",
                 "status": verified_scope["scope"],
@@ -208,16 +262,16 @@ class RAGWorkflow:
                     "query_plan": query_plan,
                     "message": "检索不到足以支持该主题的万悉品宣资料，因此停止生成，避免用无关证据硬写。",
                     "scope": scope,
-                    "retrieval_hits": hits,
-                    "references": reference_list(hits),
+                    "retrieval_hits": retrieved_hits,
+                    "references": reference_list(retrieved_hits),
                     "workflow_trace": trace,
                     "model_calls": client.calls,
                     "duration_ms": round((time.perf_counter() - started) * 1000),
                     "created_at_utc": now_utc(),
                 }
 
-        missing = unknown_fact_request(topic, hits)
-        if not hits or missing:
+        missing = unknown_fact_request(topic, retrieved_hits)
+        if not retrieved_hits or missing:
             trace.append({
                 "step": "evidence_gate",
                 "status": "insufficient_evidence",
@@ -231,46 +285,32 @@ class RAGWorkflow:
                 "task_intent": intent,
                 "query_plan": query_plan,
                 "message": "资料未提供：" + "、".join(missing) if missing else "检索不到足够相关的 PDF 依据。",
-                "retrieval_hits": hits,
-                "references": reference_list(hits),
+                "retrieval_hits": retrieved_hits,
+                "references": reference_list(retrieved_hits),
                 "workflow_trace": trace,
                 "model_calls": client.calls,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
                 "created_at_utc": now_utc(),
             }
 
-        context = build_context(
-            hits,
+        processed = process_retrieved_hits(
+            retrieved_hits,
             topic=topic,
-            retrieval_intent=query_plan.get("intent", ""),
+            top_n=top_k,
+            max_chars=8000,
         )
-        selection_by_id = {
-            item["id"]: item for item in context["evidence_selection"]
-        }
-        for hit in hits:
-            decision = selection_by_id.get(hit["id"], {})
-            hit["evidence_priority"] = decision.get("priority")
-            hit["evidence_type"] = decision.get("evidence_type")
-            hit["evidence_reason"] = decision.get("reason")
-            hit["evidence_focus"] = decision.get("focus")
-            hit["matched_signals"] = decision.get("matched_signals", [])
-
+        retrieval_hits = processed["all_hits"]
+        generation_hits = processed["selected"]
         trace.append({
-            "step": "evidence_selection",
-            "status": "ok",
-            "focus": context["focus"],
-            "priority_counts": context["priority_counts"],
-            "type_counts": context["type_counts"],
+            "step": "post_retrieval_processing",
+            "status": "ok" if generation_hits else "insufficient_evidence",
+            "status_counts": processed["status_counts"],
+            "final_top_n": top_k,
+            "selected": len(generation_hits),
+            "context_budget": processed["max_chars"],
         })
 
-        generation_ids = set(context["evidence_ids"])
-        generation_hits = [hit for hit in hits if hit["id"] in generation_ids]
         if not generation_hits:
-            trace.append({
-                "step": "context_building",
-                "status": "insufficient_evidence",
-                "evidence_count": 0,
-            })
             return {
                 "status": "insufficient_evidence",
                 "project": "rag_writer",
@@ -278,17 +318,21 @@ class RAGWorkflow:
                 "topic": topic,
                 "task_intent": intent,
                 "query_plan": query_plan,
-                "message": "检索到了候选资料，但 Evidence Policy 未找到足够适合进入生成上下文的证据。",
+                "message": "检索到了候选资料，但在安全过滤、去重和上下文预算处理后没有足够证据进入生成。",
                 "scope": scope,
-                "evidence_selection": context["evidence_selection"],
-                "retrieval_hits": hits,
-                "references": reference_list(hits),
+                "post_retrieval": {
+                    "status_counts": processed["status_counts"],
+                    "selected_ids": processed["selected_ids"],
+                },
+                "retrieval_hits": retrieval_hits,
+                "references": reference_list(retrieval_hits),
                 "workflow_trace": trace,
                 "model_calls": client.calls,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
                 "created_at_utc": now_utc(),
             }
 
+        context = build_context(generation_hits, max_chars=processed["max_chars"])
         trace.append({
             "step": "context_building",
             "status": "ok",
@@ -304,7 +348,11 @@ class RAGWorkflow:
                 "task_intent": intent,
                 "query_plan": query_plan,
                 "evidence": context["text"],
-                "instruction": "只使用真正支持当前主题的 evidence，不要求覆盖全部检索结果。",
+                "instruction": (
+                    "只使用真正支持当前主题和内容类型的 evidence。"
+                    "检索排序只是相关性线索，不要求覆盖全部 evidence；"
+                    "按照 evidence_type / risk_flags 正确归因营销主张、设想、案例和数据。"
+                ),
             }, ensure_ascii=False)
             writer_name = WRITER_PROMPTS[intent["content_type"]]
             document = client.json(
@@ -325,7 +373,7 @@ class RAGWorkflow:
 
         validation = validate_document(intent["content_type"], document, generation_hits)
         used_ids = used_citations(document)
-        refs = reference_list(hits, used_ids)
+        refs = reference_list(retrieval_hits, used_ids)
         trace.append({
             "step": "grounding_validation",
             "status": "ok",
@@ -347,21 +395,23 @@ class RAGWorkflow:
             "scope": scope,
             "task_intent": intent,
             "query_plan": query_plan,
-            "evidence_selection": context["evidence_selection"],
+            "post_retrieval": {
+                "status_counts": processed["status_counts"],
+                "selected_ids": processed["selected_ids"],
+                "candidate_count": len(retrieval_hits),
+                "final_top_n": top_k,
+                "context_budget": processed["max_chars"],
+            },
             "document": document,
             "article": document,
             "markdown": markdown,
             "references": refs,
-            "retrieval_hits": hits,
+            "retrieval_hits": retrieval_hits,
             "context": {
                 "evidence_ids": context["evidence_ids"],
                 "evidence_count": context["evidence_count"],
                 "context_chars": context["context_chars"],
-                "focus": context["focus"],
-                "priority_counts": context["priority_counts"],
-                "type_counts": context["type_counts"],
-                "excluded_evidence": context["excluded_evidence"],
-                "low_priority_evidence": context["low_priority_evidence"],
+                "max_chars": context["max_chars"],
             },
             "validation": validation,
             "workflow_trace": trace,
