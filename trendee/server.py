@@ -97,8 +97,13 @@ def make_handler(workbench):
                     save_session(sid, history, payload.get("question", ""), result)
                 elif path == "/api/search":
                     query = workbench.check_input(payload.get("query", ""))
-                    index = workbench.site_index if payload.get("source") == "website" else workbench.pdf_index
-                    result = {"hits": index.search(query, int(payload.get("top_k", 6)))}
+                    top_k = int(payload.get("top_k", 6))
+                    if payload.get("source") == "website":
+                        if workbench.site_index is None:
+                            raise FileNotFoundError("Website snapshot is not prepared.")
+                        result = {"status": "ok", "query": query, "hits": workbench.site_index.search(query, top_k)}
+                    else:
+                        result = workbench.search_pdf(query, mode=mode, top_k=top_k)
                 elif path == "/api/agents/stream":
                     sid, history, prior = session_context(payload)
                     self.send_response(200)
