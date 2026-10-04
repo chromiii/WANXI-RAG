@@ -11,6 +11,7 @@ from trendee.config import Config
 from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body, rrf_fuse
 from trendee.search.embeddings import embedding_text
+from trendee.search.query_planner import passthrough_plan, validate_query_plan
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
 
@@ -70,10 +71,47 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(
             fused[0]["retrieval_channels"],
             {
-                "channel_1": {"rank": 2, "score": 0.0},
-                "channel_2": {"rank": 1, "score": 0.0},
+                "channel_1": {"rank": 2, "score": 0.0, "weight": 1.0},
+                "channel_2": {"rank": 1, "score": 0.0, "weight": 1.0},
             },
         )
+
+    def test_weighted_rrf_preserves_original_query_priority(self):
+        original = [{"chunk_id": "original", "score": 10.0}]
+        rewrite = [{"chunk_id": "rewrite", "score": 10.0}]
+        fused = rrf_fuse(
+            [original, rewrite],
+            top_k=2,
+            labels=["original_bm25", "rewrite_1_bm25"],
+            weights=[1.0, 0.7],
+        )
+        self.assertEqual(fused[0]["chunk_id"], "original")
+        self.assertGreater(fused[0]["rrf_score"], fused[1]["rrf_score"])
+
+    def test_query_plan_always_preserves_original_query(self):
+        plan = validate_query_plan(
+            {
+                "rewrite_needed": True,
+                "intent": "customer_pain_points",
+                "retrieval_queries": [
+                    "客户痛点 服务价值",
+                    "客户痛点 服务价值",
+                    "GEO 客户挑战",
+                    "第三个扩展",
+                    "第四个扩展应截断",
+                ],
+                "reason": "抽象问题需要扩展",
+            },
+            "万悉科技主要帮助客户解决什么问题？",
+        )
+        self.assertEqual(plan["retrieval_queries"][0], "万悉科技主要帮助客户解决什么问题？")
+        self.assertEqual(len(plan["retrieval_queries"]), 4)
+        self.assertTrue(plan["rewrite_needed"])
+
+    def test_offline_query_plan_is_passthrough(self):
+        plan = passthrough_plan("GEO 原生网站有哪些核心能力？")
+        self.assertFalse(plan["rewrite_needed"])
+        self.assertEqual(plan["retrieval_queries"], ["GEO 原生网站有哪些核心能力？"])
 
     def test_embedding_text_combines_heading_and_content(self):
         value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
