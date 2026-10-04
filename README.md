@@ -32,7 +32,7 @@ Scope Guard
   -> Grounding Validator
 ```
 
-`--type auto` 会先识别写作类型；显式传入 `Blog / FAQ / 品牌介绍 / 产品介绍` 时直接路由，不额外消耗一次模型调用。完整设计见 `docs/PROJECT1_RAG.md`。
+``--type auto` 会先识别呈现类型；显式传入 `Blog / FAQ / 品牌介绍 / 产品介绍` 时直接路由，不额外消耗一次模型调用。无论类型来自 auto 还是显式选择，用户原始 topic 始终是 Primary Objective，内容类型只决定 Presentation Contract，不会替换语义目标。完整设计见 `docs/PROJECT1_RAG.md`。
 
 ```powershell
 py -m trendee.cli write "为什么中国出海品牌需要进行 GEO 优化？" --mode live
