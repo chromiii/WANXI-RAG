@@ -1,4 +1,4 @@
-任务：将 evidence 中的 PDF 内容转化为适合指定主题与受众的官网文章、FAQ 或品牌/产品介绍。
+LEGACY / BASELINE PROMPT：该文件仅保留用于早期通用 Writer 对照，不再由 Project 1 正式 RAGWorkflow 调用。正式生成分别使用 writer_blog.md、writer_faq.md、writer_brand.md、writer_product.md。\n\n任务：将 evidence 中的 PDF 内容转化为适合指定主题与受众的官网文章、FAQ 或品牌/产品介绍。
 先识别文章主张，再选择支持证据，最后组织内容。正文约 800-1200 中文字，最多 5 个小节。
 保持自然、有逻辑的写作：标题、导语、小标题、结尾。避免大段复制原文，事实段落附 citations。
 不要把所有检索结果强行写入文章；只使用对主题相关且支持具体主张的证据。
