@@ -74,7 +74,7 @@ data/
 WANXI_DATA_DIR=/secure/path/wanxi-data
 DEEPSEEK_API_KEY=
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-flash
+LLM_MODEL=deepseek-v4-flash
 ```
 
 不要提交真实 `.env`。
