@@ -264,6 +264,50 @@ function appendClaims(root, claims) {
   (claims || []).forEach(claim => appendClaim(root, claim));
 }
 
+function appendExtensionFaq(root, doc) {
+  const items = doc.faq || [];
+  if (!items.length) return;
+  root.append(node("h2", "", "延展 FAQ"));
+  const list = node("div", "faq-output-list");
+  items.forEach((item, index) => {
+    const card = node("section", "faq-output-card compact-faq");
+    const q = node("div", "faq-question");
+    q.append(node("span", "faq-index", "Q" + (index + 1)));
+    q.append(node("h3", "", item.question));
+    card.append(q);
+    const answer = node("div", "faq-answer");
+    appendClaim(answer, item.answer);
+    card.append(answer);
+    list.append(card);
+  });
+  root.append(list);
+}
+
+function appendSourceVisuals(root, result) {
+  const visuals = result.source_visuals || [];
+  if (!visuals.length) return;
+  root.append(node("h2", "", "引用页图"));
+  const grid = node("div", "source-visual-grid");
+  visuals.forEach(item => {
+    const url = assetUrl(item);
+    if (!url) return;
+    const card = node("a", "source-visual-card");
+    card.href = url;
+    card.target = "_blank";
+    card.rel = "noopener";
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = (item.heading || "PDF evidence") + " · PDF p." + (item.page ?? "?");
+    img.loading = "lazy";
+    const caption = node("div", "source-visual-caption");
+    caption.append(node("strong", "", item.heading || "PDF 页图"));
+    caption.append(node("span", "", "PDF p." + (item.page ?? "?") + " · " + (item.id || "")));
+    card.append(img, caption);
+    grid.append(card);
+  });
+  if (grid.children.length) root.append(grid);
+}
+
 function renderDocument(result) {
   const root = $("#document-output");
   clear(root);
@@ -318,6 +362,7 @@ function renderDocument(result) {
       capabilities.append(card);
     });
     root.append(capabilities);
+    appendExtensionFaq(root, doc);
   } else if (type === "product_intro") {
     const hero = node("section", "product-hero");
     hero.append(node("div", "structured-label", "产品定位"));
@@ -352,6 +397,7 @@ function renderDocument(result) {
       appendClaims(block, doc[key]);
       root.append(block);
     });
+    appendExtensionFaq(root, doc);
   } else {
     const lead = node("div", "blog-lead");
     appendClaims(lead, doc.lead);
@@ -360,18 +406,12 @@ function renderDocument(result) {
       root.append(node("h2", "", section.heading));
       appendClaims(root, section.paragraphs);
     });
-    if ((doc.faq || []).length) {
-      root.append(node("h2", "", "FAQ"));
-      doc.faq.forEach(item => {
-        const card = node("section", "faq-output-card compact-faq");
-        card.append(node("h3", "", item.question));
-        appendClaim(card, item.answer);
-        root.append(card);
-      });
-    }
     root.append(node("h2", "", "结语"));
     appendClaims(root, doc.conclusion);
+    appendExtensionFaq(root, doc);
   }
+
+  appendSourceVisuals(root, result);
 
   if ((doc.limitations || []).length) {
     root.append(node("h2", "", "资料与限制"));
