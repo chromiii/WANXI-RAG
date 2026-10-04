@@ -108,7 +108,11 @@ def _check_case(case: dict[str, Any], result: dict[str, Any]) -> list[str]:
     case_id = case["id"]
     status = result.get("status")
 
-    expected_status = case.get("expected_status")
+    mode = str(result.get("mode") or "")
+    expected_status = (
+        case.get(f"expected_status_{mode}")
+        or case.get("expected_status")
+    )
     if expected_status and status != expected_status:
         failures.append(f"status expected {expected_status!r}, got {status!r}")
 
