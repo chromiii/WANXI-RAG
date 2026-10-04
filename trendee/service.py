@@ -12,6 +12,7 @@ from .llm import Client
 from .retrieval import Index, pdf_chunks, website_chunks, context_from_hits
 from .search.pipeline import HybridRetriever
 from .search.query_planner import passthrough_plan, validate_query_plan
+from .rag.workflow import RAGWorkflow
 
 
 def prompt(name, include_common=True):
@@ -25,48 +26,6 @@ def claim(text, hit):
     return {"text": text, "citations": [hit["id"]]}
 
 
-def validate_article(value, hits):
-    if not isinstance(value.get("title"), str) or not value["title"].strip():
-        raise ValueError("article.title is required")
-    for key in ["lead", "sections", "conclusion", "faq", "limitations"]:
-        if not isinstance(value.get(key), list):
-            raise ValueError("article." + key + " must be a list")
-    if not value["lead"] or not value["sections"] or not value["conclusion"]:
-        raise ValueError("article needs a lead, sections and conclusion")
-    if len(value["sections"]) > 8:
-        raise ValueError("article has too many sections")
-    for item in value["lead"] + value["conclusion"]:
-        if not isinstance(item, dict) or not {"text", "citations"} <= item.keys():
-            raise ValueError("lead/conclusion must contain claim objects")
-    for section in value["sections"]:
-        if not section.get("heading") or not isinstance(section.get("paragraphs"), list) or not section["paragraphs"]:
-            raise ValueError("each article section needs heading and paragraphs")
-        for item in section["paragraphs"]:
-            if not isinstance(item, dict) or not {"text", "citations"} <= item.keys():
-                raise ValueError("every paragraph must be a claim object")
-    for item in value["faq"]:
-        if not item.get("question") or not isinstance(item.get("answer"), dict):
-            raise ValueError("FAQ items need question and answer claim")
-    return validate_grounding(value, hits)
-
-
-def article_markdown(value, refs):
-    locations = {r["id"]: f"PDF p.{r['page']} / {r['id']}" for r in refs}
-    def paragraph(item):
-        return item["text"] + " " + " ".join(f"[{locations.get(i, i)}]" for i in item["citations"])
-    lines = ["# " + value["title"], ""]
-    lines.extend(paragraph(x) + "\n" for x in value["lead"])
-    for section in value["sections"]:
-        lines.extend(["## " + section["heading"], ""])
-        lines.extend(paragraph(x) + "\n" for x in section["paragraphs"])
-    if value["faq"]:
-        lines.extend(["## FAQ", ""])
-        for item in value["faq"]:
-            lines.extend(["### " + item["question"], "", paragraph(item["answer"]), ""])
-    lines.extend(["## 结语", ""])
-    lines.extend(paragraph(x) + "\n" for x in value["conclusion"])
-    lines.extend(["## 资料与限制", "", *["- " + x for x in value["limitations"]]])
-    return "\n".join(lines)
 
 
 class Workbench:
@@ -95,6 +54,8 @@ class Workbench:
                 "website_urls": [p["url"] for p in self.snapshot["pages"]] if self.snapshot else [],
                 "retrieval": "Elasticsearch BM25 + BGE-M3 dense kNN + weighted multi-query RRF + local cross-encoder reranker",
                 "query_planner": "DeepSeek in live mode; original-query passthrough offline",
+                "rag_workflow": "Task Intent -> Query Plan -> Hybrid Retrieval -> Context -> Type-specific Writer -> Grounding",
+                "content_types": ["Blog", "FAQ", "品牌介绍", "产品介绍"],
                 "agents": [{**asdict(s), "dependencies": list(s.dependencies)} for s in REGISTRY.values()]}
 
     @staticmethod
@@ -164,51 +125,16 @@ class Workbench:
             "model_calls": client.calls,
         }
 
-    def write(self, topic, audience="中国出海品牌的市场与运营团队", content_type="Blog", mode="auto", top_k=6):
-        topic = self.check_input(topic)
-        audience = self.check_input(audience)
-        if content_type not in {"Blog", "FAQ", "品牌介绍", "产品介绍"}:
-            raise ValueError("Unsupported content type")
-        active_mode = self.config.mode(mode)
-        if injection_request(topic):
-            return {"status": "rejected", "mode": active_mode, "message": "不能伪造公司事实、数据或引用。请提供基于资料的写作任务。"}
-        started = time.perf_counter()
-        client = Client(self.config)
-        retrieval = self.search_pdf(topic, mode=active_mode, top_k=top_k, client=client)
-        hits = retrieval["hits"]
-        missing = unknown_fact_request(topic, hits)
-        if not hits or missing:
-            return {"status": "insufficient_evidence", "mode": active_mode,
-                    "message": "资料未提供：" + "、".join(missing) if missing else "检索不到足够相关的 PDF 依据。",
-                    "query_plan": retrieval["query_plan"],
-                    "retrieval_hits": hits, "references": reference_list(hits), "model_calls": client.calls}
-        if active_mode == "live":
-            request = json.dumps({"topic": topic, "audience": audience, "content_type": content_type,
-                                  "query_plan": retrieval["query_plan"],
-                                  "evidence": context_from_hits(hits)}, ensure_ascii=False)
-            article = client.json(
-                prompt("writer"),
-                request,
-                lambda x: validate_article(x, hits),
-                purpose="writer",
-            )
-        else:
-            chosen = hits[:4]
-            lead = claim("品宣资料围绕本主题提供了以下信息。下面的草稿由检索片段组织而成，尚未调用大模型进行改写。", chosen[0])
-            article = {"title": topic, "lead": [lead],
-                       "sections": [{"heading": h["heading"],
-                                     "paragraphs": [claim("品宣资料自述：\n" + h["text"], h)]} for h in chosen],
-                       "faq": [], "conclusion": [claim("上述内容均可回查原始 PDF。正式发布前应核对营销主张和统计口径，补足待验证的公司资料。", chosen[0])],
-                       "limitations": ["离线检索草稿：未调用模型；不代表已经完成语言润色。", "品宣中的技术效果与数字是资料自述，未独立验证。", "引用校验是 ID/数字与已知误用检查，不能保证语义蕴含。"]}
-        validation = validate_article(article, hits)
-        refs = reference_list(hits, used_citations(article))
-        return {"status": "ok", "project": "rag_writer", "mode": active_mode,
-                "model": self.config.model if active_mode == "live" else None,
-                "topic": topic, "audience": audience, "content_type": content_type,
-                "query_plan": retrieval["query_plan"],
-                "article": article, "markdown": article_markdown(article, refs), "references": refs,
-                "retrieval_hits": hits, "validation": validation, "model_calls": client.calls,
-                "duration_ms": round((time.perf_counter()-started)*1000), "created_at_utc": now_utc()}
+    def write(self, topic, audience="中国出海品牌的市场与运营团队", content_type="auto", mode="auto", top_k=6):
+        """Run the single Project 1 production workflow."""
+        workflow = RAGWorkflow(self.config, self._get_pdf_retriever())
+        return workflow.run(
+            topic=topic,
+            audience=audience,
+            content_type=content_type,
+            mode=mode,
+            top_k=top_k,
+        )
 
     def route(self, question, history=None, mode="auto", router="rules", client=None):
         question = self.check_input(question)
