@@ -12,6 +12,8 @@ from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body, rrf_fuse
 from trendee.search.embeddings import embedding_text
 from trendee.search.query_planner import passthrough_plan, validate_query_plan
+from trendee.rag.intent import canonical_content_type, parse_task_intent
+from trendee.rag.generation import validate_document, render_markdown
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
 
@@ -112,6 +114,52 @@ class CodeOnlySmokeTests(unittest.TestCase):
         plan = passthrough_plan("GEO 原生网站有哪些核心能力？")
         self.assertFalse(plan["rewrite_needed"])
         self.assertEqual(plan["retrieval_queries"], ["GEO 原生网站有哪些核心能力？"])
+
+    def test_task_intent_explicit_type_wins_without_model(self):
+        intent = parse_task_intent(
+            topic="万悉科技主要帮助客户解决什么问题？",
+            audience="市场团队",
+            requested_type="FAQ",
+            active_mode="live",
+            client=None,
+            system_prompt=None,
+        )
+        self.assertEqual(intent["content_type"], "faq")
+        self.assertEqual(intent["source"], "explicit")
+
+    def test_task_intent_rule_detects_blog(self):
+        intent = parse_task_intent(
+            topic="为什么中国出海品牌需要进行 GEO 优化？",
+            audience="市场团队",
+            requested_type="auto",
+            active_mode="offline",
+        )
+        self.assertEqual(intent["content_type"], "blog")
+        self.assertEqual(intent["source"], "rule")
+
+    def test_content_type_aliases(self):
+        self.assertEqual(canonical_content_type("品牌介绍"), "brand_intro")
+        self.assertEqual(canonical_content_type("产品介绍"), "product_intro")
+        self.assertEqual(canonical_content_type("auto"), "auto")
+
+    def test_faq_schema_is_distinct_from_blog(self):
+        hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌在AI问答引擎中的可见性。", "source": "x", "page": 1}]
+        faq = {
+            "title": "FAQ",
+            "intro": [{"text": "以下回答基于资料。", "citations": ["pdf-p001-c01"]}],
+            "faq": [
+                {"question": "问题1", "answer": {"text": "回答。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题2", "answer": {"text": "回答。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题3", "answer": {"text": "回答。", "citations": ["pdf-p001-c01"]}},
+            ],
+            "conclusion": [{"text": "结语。", "citations": ["pdf-p001-c01"]}],
+            "limitations": [],
+        }
+        result = validate_document("faq", faq, hits)
+        self.assertTrue(result["citation_ids_valid"])
+        markdown = render_markdown("faq", faq, hits)
+        self.assertIn("## 问题1", markdown)
+        self.assertNotIn("## FAQ\n", markdown)
 
     def test_embedding_text_combines_heading_and_content(self):
         value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
