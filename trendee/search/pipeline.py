@@ -7,6 +7,7 @@ from typing import Any
 
 from .embeddings import EmbeddingSettings, LocalSentenceEmbedder, embedding_text
 from .elasticsearch_store import ElasticsearchEvidenceStore, ElasticsearchSettings
+from .reranker import DEFAULT_RERANKER, LocalReranker, RerankerSettings
 
 
 def load_normalized_records(path: str | Path) -> list[dict[str, Any]]:
@@ -75,6 +76,9 @@ def hybrid_query(
     top_k: int = 6,
     candidate_k: int = 20,
     device: str | None = None,
+    rerank: bool = False,
+    reranker_model: str = DEFAULT_RERANKER,
+    rerank_candidates: int = 12,
 ) -> list[dict[str, Any]]:
     if not query.strip():
         return []
@@ -96,11 +100,27 @@ def hybrid_query(
             raise RuntimeError(
                 "Elasticsearch is unavailable. Start it with: docker compose up -d elasticsearch"
             )
-        return store.hybrid_search(
+        retrieval_k = max(top_k, rerank_candidates) if rerank else top_k
+        candidates = store.hybrid_search(
             query=query,
             query_vector=query_vector,
-            top_k=top_k,
-            candidate_k=candidate_k,
+            top_k=retrieval_k,
+            candidate_k=max(candidate_k, retrieval_k),
         )
     finally:
         store.close()
+
+    if not rerank:
+        result = candidates[:top_k]
+        for rank, item in enumerate(result, 1):
+            item["rank"] = rank
+        return result
+
+    reranker = LocalReranker(
+        RerankerSettings(
+            model_name=reranker_model,
+            device=device or "auto",
+            allow_download=True,
+        )
+    )
+    return reranker.rerank(query, candidates, top_k=top_k)
