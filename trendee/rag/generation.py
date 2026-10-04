@@ -205,12 +205,11 @@ def render_markdown(content_type: str, value: dict[str, Any], refs: Sequence[dic
         for section in value["sections"]:
             lines.extend(["## " + section["heading"], ""])
             lines.extend(paragraph(x) + "\n" for x in section["paragraphs"])
-        if value["faq"]:
-            lines.extend(["## FAQ", ""])
-            for item in value["faq"]:
-                lines.extend(["### " + item["question"], "", paragraph(item["answer"]), ""])
         lines.extend(["## 结语", ""])
         lines.extend(paragraph(x) + "\n" for x in value["conclusion"])
+        lines.extend(["## 延展 FAQ", ""])
+        for item in value["faq"]:
+            lines.extend(["### " + item["question"], "", paragraph(item["answer"]), ""])
     elif content_type == "faq":
         lines.extend(paragraph(x) + "\n" for x in value["intro"])
         for item in value["faq"]:
