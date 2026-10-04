@@ -28,8 +28,6 @@ def evidence_metadata(hit: dict[str, Any]) -> dict[str, Any]:
     heading = _heading(hit)
     text = _text(hit)
     combined = heading + "\n" + text
-    heading_lower = heading.lower()
-
     if re.search(r"设想|假设场景|概念方案|拟议|模拟场景", heading, re.I):
         primary_type = "hypothetical"
     elif re.search(r"客户案例|合作案例|项目经验|合作客户|已服务", heading, re.I):
@@ -68,7 +66,7 @@ def _hypothetical_subject(hit: dict[str, Any]) -> str:
     return match.group(1).strip() if match else ""
 
 
-def hard_filter_reason(hit: dict[str, Any], topic: str, content_type: str = "") -> str | None:
+def hard_filter_reason(hit: dict[str, Any], topic: str) -> str | None:
     metadata = evidence_metadata(hit)
     if metadata["primary_type"] == "hypothetical":
         subject = _hypothetical_subject(hit)
@@ -80,15 +78,6 @@ def hard_filter_reason(hit: dict[str, Any], topic: str, content_type: str = "") 
         if not explicitly_requested:
             return "unrequested_hypothetical"
 
-    # Product pages should be grounded in product/service evidence, not in
-    # company-news or team-profile chunks unless the user explicitly asks for them.
-    if content_type == "product_intro":
-        asks_media = bool(re.search(r"媒体|报道|新闻|获奖|荣誉", topic, re.I))
-        asks_profile = bool(re.search(r"团队|创始人|CEO|CTO|人物", topic, re.I))
-        if metadata["primary_type"] == "media" and not asks_media:
-            return "media_not_admissible_for_product_intro"
-        if metadata["primary_type"] == "profile" and not asks_profile:
-            return "profile_not_admissible_for_product_intro"
     return None
 
 
@@ -130,7 +119,6 @@ def process_retrieved_hits(
     hits: Sequence[dict[str, Any]],
     *,
     topic: str,
-    content_type: str = "",
     top_n: int = 6,
     max_chars: int = 8000,
 ) -> dict[str, Any]:
@@ -147,7 +135,7 @@ def process_retrieved_hits(
         item["evidence_type"] = meta["primary_type"]
         item["risk_flags"] = meta["risk_flags"]
 
-        reason = hard_filter_reason(item, topic, content_type)
+        reason = hard_filter_reason(item, topic)
         if reason:
             item["postprocess_status"] = "filtered"
             item["postprocess_reason"] = reason
