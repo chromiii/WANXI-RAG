@@ -76,13 +76,32 @@ function renderIntent(result) {
   root.append(grid);
   const reason = isMeta ? (result.scope?.reason || result.message) : intent.reason;
   if (reason) root.append(node("div", "intent-reason", reason));
-  if (!isMeta && (intent.retrieval_needs || []).length) {
-    const needs = node("div", "intent-needs");
-    needs.append(node("div", "small-title", "Retrieval needs"));
-    const chips = node("div", "query-list");
-    intent.retrieval_needs.forEach(item => chips.append(node("span", "query-chip", item)));
-    needs.append(chips);
-    root.append(needs);
+  if (!isMeta) {
+    const objective = node("div", "intent-needs");
+    objective.append(node("div", "small-title", "Primary objective"));
+    objective.append(node("div", "intent-reason", intent.primary_question || result.topic || "-"));
+    if (intent.semantic_focus) {
+      objective.append(node("div", "query-note", "Semantic focus · " + intent.semantic_focus));
+    }
+    root.append(objective);
+
+    if ((intent.primary_retrieval_needs || []).length) {
+      const primary = node("div", "intent-needs");
+      primary.append(node("div", "small-title", "Primary retrieval needs"));
+      const chips = node("div", "query-list");
+      intent.primary_retrieval_needs.forEach(item => chips.append(node("span", "query-chip original", item)));
+      primary.append(chips);
+      root.append(primary);
+    }
+
+    if ((intent.format_retrieval_needs || []).length) {
+      const support = node("div", "intent-needs");
+      support.append(node("div", "small-title", "Format support"));
+      const chips = node("div", "query-list");
+      intent.format_retrieval_needs.forEach(item => chips.append(node("span", "query-chip", item)));
+      support.append(chips);
+      root.append(support);
+    }
   }
 }
 
@@ -98,6 +117,12 @@ function renderQueryPlan(result) {
   const note = node("div", "query-note", "Intent: " + (plan.intent || "-") + " · Rewrite: " + (plan.rewrite_needed ? "yes" : "no"));
   if (plan.reason) note.textContent += " · " + plan.reason;
   root.append(note);
+  if (plan.rerank_query) {
+    const details = node("details", "query-details");
+    details.append(node("summary", "", "查看 Rerank Query"));
+    details.append(node("pre", "", plan.rerank_query));
+    root.append(details);
+  }
 }
 
 function renderWorkflow(result) {
