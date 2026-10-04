@@ -115,6 +115,26 @@ class RAGWorkflow:
             "source": scope["source"],
             "reason": scope["reason"],
         })
+        if scope["scope"] == "meta":
+            messages = {
+                "greeting": "你好，我是这个项目的万悉 RAG 内容写作助手。你可以给我一个与万悉科技、GEO、AI 搜索可见性、品牌内容或产品能力相关的主题。",
+                "identity": "我是万悉科技 Project 1 的 RAG 写作助手，负责基于品宣 PDF 生成 Blog、FAQ、品牌介绍和产品介绍，并展示检索证据、页码与引用校验。",
+                "capabilities": "我支持四类内容：Blog、FAQ、品牌介绍、产品介绍。系统会进行范围判断、任务意图识别、Query Planning、Hybrid Retrieval、Reranking、证据构建、内容生成和 Grounding 校验。",
+            }
+            return {
+                "status": "meta",
+                "project": "rag_writer",
+                "mode": active_mode,
+                "topic": topic,
+                "meta_intent": scope.get("meta_intent"),
+                "message": messages.get(scope.get("meta_intent"), "你好，我是万悉 RAG 内容写作助手。"),
+                "scope": scope,
+                "workflow_trace": trace,
+                "model_calls": client.calls,
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+                "created_at_utc": now_utc(),
+            }
+
         if scope["scope"] == "out_of_scope":
             return {
                 "status": "out_of_scope",
