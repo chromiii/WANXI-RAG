@@ -7,7 +7,7 @@ The repository stores code, prompts, tests, configuration examples and documenta
 Keep these outside version control:
 
 - `trendee_brand.pdf` and any other employer-provided source documents
-- parsed page/chunk caches such as `brand_pages.json`
+- parsed staging/normalized evidence such as `evidence_staging.jsonl` and `evidence_normalized.jsonl`
 - captured website snapshots used as runtime evidence
 - embeddings and vector indexes (FAISS, Chroma, Qdrant local storage, etc.)
 - SQLite/local databases, pickle/NumPy retrieval caches
