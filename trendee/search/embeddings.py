@@ -18,6 +18,7 @@ class EmbeddingSettings:
     model_name: str = DEFAULT_MODEL
     batch_size: int = 8
     device: str | None = None
+    local_files_only: bool = False
 
 
 class LocalSentenceEmbedder:
@@ -34,7 +35,11 @@ class LocalSentenceEmbedder:
         kwargs = {}
         if settings.device and settings.device.lower() != "auto":
             kwargs["device"] = settings.device
-        self.model = SentenceTransformer(settings.model_name, **kwargs)
+        self.model = SentenceTransformer(
+            settings.model_name,
+            local_files_only=settings.local_files_only,
+            **kwargs,
+        )
 
     def encode(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
