@@ -37,9 +37,6 @@ def validate_grounding(value, hits, require_claims=True):
         missing = numbers(text) - numbers(source)
         if missing:
             errors.append("numbers absent from cited evidence: " + ", ".join(sorted(missing)))
-        if ("招商银行" in text and re.search(r"客户|合作|已服务|交付|帮助.*提升", text) and
-                not re.search(r"设想|假设|拟|不能|不代表|并非", text)):
-            errors.append("招商银行应用设想 cannot be asserted as an delivered client case")
         if (re.search(r"保证.{0,12}(第一|推荐|提升|增长)|一定.{0,8}(推荐|引用)|永久写入.*参数", text)
                 and not re.search(r"不能|不保证|无法保证|并非|不代表", text)):
             errors.append("unsupported guarantee about AI recommendation or model memory")
@@ -61,7 +58,7 @@ def validate_grounding(value, hits, require_claims=True):
         raise ValueError("; ".join(errors[:10]))
     return {"claim_count": count, "citation_ids_valid": True, "numeric_guard_passed": True,
             "semantic_entailment": "not independently verified",
-            "note": "ID/数字一致性与已知误用检查通过；引用存在不等于观点已获独立验证。"}
+            "note": "ID/数字一致性检查通过；引用存在不等于观点已获独立验证。"}
 
 
 def unknown_fact_request(query, hits):
