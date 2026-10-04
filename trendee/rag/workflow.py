@@ -5,7 +5,6 @@ import json
 import time
 from typing import Any
 
-from ..config import ROOT
 from ..documents import now_utc
 from ..grounding import (
     injection_request,
@@ -13,6 +12,8 @@ from ..grounding import (
     used_citations,
 )
 from ..llm import Client
+from ..prompts import load_prompt
+from ..search.evidence import adapt_pdf_hit
 from ..search.query_planner import passthrough_plan, validate_query_plan
 from .context import build_context
 from .evidence_gate import assess_evidence_sufficiency
@@ -28,14 +29,6 @@ WRITER_PROMPTS = {
     "brand_intro": "writer_brand",
     "product_intro": "writer_product",
 }
-
-
-def _prompt(name: str, include_common: bool = True) -> str:
-    specific = (ROOT / f"prompts/{name}.md").read_text(encoding="utf-8")
-    if not include_common:
-        return specific
-    common = (ROOT / "prompts/common.md").read_text(encoding="utf-8")
-    return common + "\n\n" + specific
 
 
 def source_visuals(refs: list[dict[str, Any]], max_items: int = 3) -> list[dict[str, Any]]:
@@ -57,28 +50,6 @@ def source_visuals(refs: list[dict[str, Any]], max_items: int = 3) -> list[dict[
         if len(visuals) >= max_items:
             break
     return visuals
-
-
-def adapt_pdf_hit(hit: dict[str, Any]) -> dict[str, Any]:
-    """Normalize Elasticsearch evidence to the shared grounding contract."""
-    return {
-        "id": hit["chunk_id"],
-        "text": hit.get("content", ""),
-        "source": hit.get("source_name", "trendee_brand.pdf"),
-        "page": hit.get("page"),
-        "url": None,
-        "heading": hit.get("heading", ""),
-        "captured_at_utc": hit.get("created_at"),
-        "asset_path": hit.get("asset_path"),
-        "score": hit.get("reranker_score", hit.get("rrf_score")),
-        "pre_rerank_rank": hit.get("pre_rerank_rank"),
-        "reranker_score": hit.get("reranker_score"),
-        "reranker_score_raw": hit.get("reranker_score_raw"),
-        "rrf_score": hit.get("rrf_score"),
-        "retrieval_channels": hit.get("retrieval_channels", {}),
-        "query_variants": hit.get("query_variants", []),
-        "rank": hit.get("rank"),
-    }
 
 
 class RAGWorkflow:
@@ -113,7 +84,7 @@ class RAGWorkflow:
             },
         }
         raw = client.json(
-            _prompt("query_planner", include_common=False),
+            load_prompt("query_planner", include_common=False),
             json.dumps(payload, ensure_ascii=False),
             lambda value: validate_query_plan(value, topic),
             purpose="query_planner",
@@ -206,7 +177,7 @@ class RAGWorkflow:
             requested_type=content_type,
             active_mode=active_mode,
             client=client,
-            system_prompt=_prompt("task_intent", include_common=False),
+            system_prompt=load_prompt("task_intent", include_common=False),
         )
         trace.append({
             "step": "task_intent",
@@ -286,7 +257,7 @@ class RAGWorkflow:
             hits=retrieved_hits,
             active_mode=active_mode,
             client=client,
-            system_prompt=_prompt("evidence_sufficiency", include_common=False),
+            system_prompt=load_prompt("evidence_sufficiency", include_common=False),
         )
         trace.append({
             "step": "evidence_gate",
@@ -381,7 +352,7 @@ class RAGWorkflow:
             }, ensure_ascii=False)
             writer_name = WRITER_PROMPTS[intent["content_type"]]
             document = client.json(
-                _prompt(writer_name),
+                load_prompt(writer_name),
                 request,
                 lambda value: validate_document(intent["content_type"], value, generation_hits, topic=topic),
                 purpose="writer:" + intent["content_type"],
