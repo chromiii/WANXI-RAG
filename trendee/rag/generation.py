@@ -154,8 +154,8 @@ def offline_document(content_type: str, topic: str, hits: Sequence[dict[str, Any
                 "question": h.get("heading") or "补充问题",
                 "answer": _claim(h["text"], h),
             })
-        return {"title": topic, "intro": [_claim("以下回答仅依据已检索的万悉品宣资料。", first)],
-                "faq": faq, "conclusion": [_claim("以上回答均可回查对应 PDF 页。", first)],
+        return {"title": topic, "intro": [_claim("以下回答围绕当前问题展开。", first)],
+                "faq": faq, "conclusion": [_claim("以上回答围绕当前主题进行总结。", first)],
                 "limitations": limitations}
     if content_type == "brand_intro":
         return {"title": topic, "positioning": [_claim(first["text"], first)],
@@ -183,13 +183,13 @@ def offline_document(content_type: str, topic: str, hits: Sequence[dict[str, Any
                 "limitations": limitations}
 
     return {"title": topic,
-            "lead": [_claim("以下文章草稿仅依据已检索的万悉品宣资料。", first)],
+            "lead": [_claim("本文围绕当前主题展开。", first)],
             "sections": [{"heading": h.get("heading") or "资料要点", "paragraphs": [_claim(h["text"], h)]} for h in chosen],
             "faq": [
                 {"question": "这一主题最核心的问题是什么？", "answer": _claim(chosen[0]["text"], chosen[0])},
                 {"question": "企业可以从哪些能力入手？", "answer": _claim(chosen[min(1, len(chosen)-1)]["text"], chosen[min(1, len(chosen)-1)])},
                 {"question": "实施时还需要关注什么？", "answer": _claim(chosen[-1]["text"], chosen[-1])},
-            ], "conclusion": [_claim("以上要点均可回查对应 PDF 页面。", first)],
+            ], "conclusion": [_claim("以上要点共同构成当前主题的核心结论。", first)],
             "limitations": limitations}
 
 
