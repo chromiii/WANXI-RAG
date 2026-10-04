@@ -220,6 +220,8 @@ query
                  ↓
            Python RRF fusion
                  ↓
+        optional cross-encoder
+                 ↓
               Top-K
 ```
 
