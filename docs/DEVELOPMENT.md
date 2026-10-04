@@ -39,7 +39,7 @@ Use the runtime secret mechanism or a local ignored `.env`:
 ```dotenv
 DEEPSEEK_API_KEY=
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-flash
+LLM_MODEL=deepseek-v4-flash
 LLM_TIMEOUT_SECONDS=90
 LLM_MAX_TOKENS=5000
 ```
