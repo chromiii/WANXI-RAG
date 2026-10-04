@@ -134,6 +134,14 @@ class Project1IntentTests(unittest.TestCase):
         result = precheck_scope("帮我写一份杭州旅游攻略")
         self.assertEqual(result["scope"], "out_of_scope")
 
+    def test_product_capability_question_is_not_mistaken_for_meta(self):
+        result = precheck_scope("Trendee 有哪些功能？")
+        self.assertEqual(result["scope"], "in_scope")
+
+    def test_product_usage_question_is_not_mistaken_for_meta(self):
+        result = precheck_scope("万悉产品如何使用？")
+        self.assertNotEqual(result["scope"], "meta")
+
     def test_geo_question_is_in_scope(self):
         result = precheck_scope("GEO 和 SEO 有什么区别？")
         self.assertEqual(result["scope"], "in_scope")
