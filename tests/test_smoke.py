@@ -14,7 +14,7 @@ from trendee.search.embeddings import embedding_text
 from trendee.search.query_planner import passthrough_plan, validate_query_plan
 from trendee.rag.intent import canonical_content_type, parse_task_intent, retrieval_seed_queries
 from trendee.rag.generation import validate_document, render_markdown
-from trendee.rag.workflow import RAGWorkflow
+from trendee.rag.workflow import RAGWorkflow, source_visuals
 from trendee.rag.scope import precheck_scope
 from trendee.rag.context import build_context
 from trendee.rag.postprocess import process_retrieved_hits, evidence_metadata, near_duplicate
@@ -223,6 +223,51 @@ class CodeOnlySmokeTests(unittest.TestCase):
         markdown = render_markdown("faq", faq, hits)
         self.assertIn("## 问题1", markdown)
         self.assertNotIn("## FAQ\n", markdown)
+
+    def test_publishable_style_rejects_source_meta_wording(self):
+        hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌AI可见性。", "source": "x", "page": 1}]
+        blog = {
+            "title": "测试",
+            "lead": [{"text": "资料中列出万悉科技提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}],
+            "sections": [{"heading": "正文", "paragraphs": [{"text": "万悉科技提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}]}],
+            "conclusion": [{"text": "万悉科技聚焦AI可见性。", "citations": ["pdf-p001-c01"]}],
+            "faq": [
+                {"question": "问题1", "answer": {"text": "万悉科技提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题2", "answer": {"text": "万悉科技提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题3", "answer": {"text": "万悉科技提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+            ],
+            "limitations": [],
+        }
+        with self.assertRaisesRegex(ValueError, "source-meta wording"):
+            validate_document("blog", blog, hits, topic="为什么需要GEO？")
+
+    def test_structured_writers_require_three_extension_faqs(self):
+        hits = [{"id": "pdf-p001-c01", "text": "Trendee提升品牌AI可见性。", "source": "x", "page": 1}]
+        product = {
+            "title": "产品介绍",
+            "summary": [{"text": "Trendee提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}],
+            "pain_points": [],
+            "capabilities": [{"heading": "AI可见性", "paragraphs": [{"text": "Trendee提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}]}],
+            "use_cases": [],
+            "boundaries": [],
+            "faq": [
+                {"question": "问题1", "answer": {"text": "Trendee提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题2", "answer": {"text": "Trendee提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+                {"question": "问题3", "answer": {"text": "Trendee提升品牌AI可见性。", "citations": ["pdf-p001-c01"]}},
+            ],
+            "limitations": [],
+        }
+        result = validate_document("product_intro", product, hits, topic="介绍Trendee")
+        self.assertTrue(result["citation_ids_valid"])
+
+    def test_source_visuals_use_only_unique_cited_pages(self):
+        refs = [
+            {"id": "a", "page": 2, "heading": "A", "source": "x", "asset_path": "assets/pages/p002.png"},
+            {"id": "b", "page": 2, "heading": "B", "source": "x", "asset_path": "assets/pages/p002.png"},
+            {"id": "c", "page": 18, "heading": "C", "source": "x", "asset_path": "assets/pages/p018.png"},
+        ]
+        visuals = source_visuals(refs)
+        self.assertEqual([v["page"] for v in visuals], [2, 18])
 
     def test_rag_workflow_offline_orchestrates_all_stages(self):
         class FakeConfig:
