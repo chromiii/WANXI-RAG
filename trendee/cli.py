@@ -68,6 +68,11 @@ def main():
     hybrid.set_defaults(rerank=True)
     hybrid.add_argument("--reranker-model", default="BAAI/bge-reranker-base")
     hybrid.add_argument("--rerank-candidates", type=int, default=12)
+    rag_search = sub.add_parser("rag-search", help="Full PDF retrieval: query planner + multi-query hybrid + reranker")
+    rag_search.add_argument("query")
+    rag_search.add_argument("--mode", choices=["auto", "live", "offline"], default="auto")
+    rag_search.add_argument("--top-k", type=int, default=6)
+    rag_search.add_argument("--output")
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
     prepare.add_argument("--refresh-site", action="store_true")
     demo = sub.add_parser("demo", help="Run and save reproducible sample cases")
@@ -125,6 +130,11 @@ def main():
             ),
             None,
         )
+        return
+    if args.command == "rag-search":
+        workbench = Workbench()
+        result = workbench.search_pdf(args.query, mode=args.mode, top_k=args.top_k)
+        save_result(result, args.output)
         return
     if args.command == "hybrid-search":
         from .search.pipeline import hybrid_query
