@@ -9,17 +9,12 @@ from .config import ROOT, Config, runtime_data_dir
 from .documents import now_utc
 from .grounding import reference_list, used_citations, injection_request
 from .llm import Client
+from .prompts import load_prompt
+from .search.evidence import adapt_pdf_hit
 from .retrieval import Index, website_chunks, context_from_hits
 from .search.pipeline import HybridRetriever
 from .search.query_planner import passthrough_plan, validate_query_plan
 from .rag.workflow import RAGWorkflow
-
-
-def prompt(name, include_common=True):
-    specific = (ROOT / f"prompts/{name}.md").read_text(encoding="utf-8")
-    if not include_common:
-        return specific
-    return (ROOT / "prompts/common.md").read_text(encoding="utf-8") + "\n\n" + specific
 
 
 def claim(text, hit):
@@ -79,33 +74,11 @@ class Workbench:
             )
         return self._rag_retriever
 
-    @staticmethod
-    def _adapt_pdf_hit(hit):
-        """Adapt Elasticsearch evidence to the existing grounding/citation contract."""
-        return {
-            "id": hit["chunk_id"],
-            "text": hit.get("content", ""),
-            "source": hit.get("source_name", "trendee_brand.pdf"),
-            "page": hit.get("page"),
-            "url": None,
-            "heading": hit.get("heading", ""),
-            "captured_at_utc": hit.get("created_at"),
-            "asset_path": hit.get("asset_path"),
-            "score": hit.get("reranker_score", hit.get("rrf_score")),
-            "pre_rerank_rank": hit.get("pre_rerank_rank"),
-            "reranker_score": hit.get("reranker_score"),
-            "reranker_score_raw": hit.get("reranker_score_raw"),
-            "rrf_score": hit.get("rrf_score"),
-            "retrieval_channels": hit.get("retrieval_channels", {}),
-            "query_variants": hit.get("query_variants", []),
-            "rank": hit.get("rank"),
-        }
-
     def plan_pdf_query(self, query, active_mode, client):
         if active_mode != "live":
             return passthrough_plan(query)
         raw = client.json(
-            prompt("query_planner", include_common=False),
+            load_prompt("query_planner", include_common=False),
             json.dumps({"query": query}, ensure_ascii=False),
             lambda value: validate_query_plan(value, query),
             purpose="query_planner",
@@ -128,7 +101,7 @@ class Workbench:
             "mode": active_mode,
             "query": query,
             "query_plan": plan,
-            "hits": [self._adapt_pdf_hit(hit) for hit in raw_hits],
+            "hits": [adapt_pdf_hit(hit) for hit in raw_hits],
             "model_calls": client.calls,
         }
 
@@ -153,7 +126,7 @@ class Workbench:
             if self.config.mode(mode) != "live":
                 raise ValueError("LLM Router 需要真实模型模式；离线模式请选择规则路由。")
             client = client or Client(self.config)
-            decision = client.json(prompt("router"), json.dumps({"question": question,
+            decision = client.json(load_prompt("router"), json.dumps({"question": question,
                                    "previous_questions": (history or [])[-3:]}, ensure_ascii=False), validate_route,
                                    purpose="router")
             decision["router"] = "llm"
@@ -285,7 +258,7 @@ class Workbench:
             if active_mode == "live":
                 user = json.dumps({"question": question, "previous_question": previous, "upstream_results": dependencies,
                                    "evidence": context_from_hits(hits)}, ensure_ascii=False)
-                value = client.json(prompt(name), user, lambda x: validate_agent(name, x, hits), purpose="agent:" + name)
+                value = client.json(load_prompt(name), user, lambda x: validate_agent(name, x, hits), purpose="agent:" + name)
             else:
                 value = self.offline_agent(name, hits, state, question + " " + previous)
             validation = validate_agent(name, value, hits)
