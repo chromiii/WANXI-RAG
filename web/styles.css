@@ -236,3 +236,46 @@ input[type="range"] { padding: 0; }
   .structured-output-grid, .capability-grid { grid-template-columns: 1fr; }
   .faq-answer { padding-left: 0; }
 }
+
+
+.source-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 22px;
+}
+.source-visual-card {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+.source-visual-card:hover { box-shadow: 0 8px 22px rgba(20,24,32,.08); }
+.source-visual-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+  background: #f6f7f8;
+  border-bottom: 1px solid var(--line);
+}
+.source-visual-caption { padding: 10px 11px; }
+.source-visual-caption strong {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.source-visual-caption span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .source-visual-grid { grid-template-columns: 1fr; }
+}
