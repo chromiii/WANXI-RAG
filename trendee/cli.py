@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from .config import ROOT, Config, runtime_data_dir
-from .documents import prepare_brand, capture_site
+from .documents import capture_site
 from .service import Workbench
 
 
@@ -74,7 +74,7 @@ def main():
     rag_search.add_argument("--mode", choices=["auto", "live", "offline"], default="auto")
     rag_search.add_argument("--top-k", type=int, default=6)
     rag_search.add_argument("--output")
-    prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
+    prepare = sub.add_parser("prepare", help="Run the canonical PDF ingest+normalize pipeline; optionally refresh the bounded website snapshot")
     prepare.add_argument("--refresh-site", action="store_true")
     demo = sub.add_parser("demo", help="Run and save reproducible sample cases")
     demo.add_argument("--mode", choices=["live", "offline"], default="offline")
@@ -106,9 +106,21 @@ def main():
         )
         return
     if args.command == "prepare":
-        pages, manifest = prepare_brand(force=True)
-        result = {"pdf_pages": len(pages), "manifest": manifest}
-        if args.refresh_site: result["website"] = capture_site()
+        from .ingestion.pdf import extract_pdf_evidence
+        from .ingestion.normalize import normalize_staging
+        private_dir = runtime_data_dir()
+        pdf_path = private_dir / "trendee_brand.pdf"
+        ingest_manifest = extract_pdf_evidence(pdf_path, private_dir)
+        normalize_manifest = normalize_staging(
+            private_dir / "evidence_staging.jsonl",
+            private_dir / "evidence_normalized.jsonl",
+        )
+        result = {
+            "ingest": ingest_manifest,
+            "normalize": normalize_manifest,
+        }
+        if args.refresh_site:
+            result["website"] = capture_site()
         save_result(result, None)
         return
     if args.command == "serve":
@@ -182,8 +194,12 @@ def main():
     if args.command == "info":
         save_result(workbench.info(), None)
     elif args.command == "search":
-        index = workbench.pdf_index if args.source == "pdf" else workbench.site_index
-        save_result(index.search(args.query, args.top_k), args.output)
+        if args.source == "pdf":
+            save_result(workbench.search_pdf(args.query, mode="offline", top_k=args.top_k), args.output)
+        else:
+            if workbench.site_index is None:
+                raise FileNotFoundError("Missing website_snapshot.json; run prepare --refresh-site first.")
+            save_result(workbench.site_index.search(args.query, args.top_k), args.output)
     elif args.command == "write":
         result = workbench.write(args.topic, args.audience, args.type, args.mode, args.top_k)
         save_result(result, args.output)
