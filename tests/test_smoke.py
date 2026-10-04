@@ -155,7 +155,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
             active_mode="offline",
         )
         self.assertEqual(intent["content_type"], "product_intro")
-        self.assertIn("产品核心能力与功能", intent["retrieval_needs"])
+        self.assertIn("与原问题相关的产品能力", intent["format_retrieval_needs"])
         seeds = retrieval_seed_queries("product_intro", intent["semantic_focus"])
         self.assertTrue(any("产品能力" in query for query in seeds))
         self.assertTrue(any("使用场景" in query for query in seeds))
