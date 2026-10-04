@@ -62,8 +62,9 @@ http://127.0.0.1:8000
 - Post-Retrieval 状态（SELECTED / FILTERED / DEDUPED / BUDGET / NOT SELECTED）；
 - evidence type / risk flags、chunk 文本、RRF / reranker / channel 分数；
 - 对应 PDF 整页 PNG 证据；
-- 四类 Writer 的结构化生成结果；
-- citation 反向定位到 evidence；
+- 四类 Writer 的结构化生成结果；Blog / 品牌介绍 / 产品介绍附带 3 个主题延展 FAQ；
+- 可发布文案风格校验，避免“资料中列出”等检索报告式表达；
+- citation 反向定位到 evidence，并展示正文实际引用的 PDF 页图；
 - Grounding 校验结果；
 - DeepSeek 各阶段 token usage / latency；
 - 本次完整 JSON。
