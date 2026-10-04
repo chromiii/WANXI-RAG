@@ -72,10 +72,10 @@ def validate_document(content_type: str, value: dict[str, Any], hits: Sequence[d
         _require_claim_list(value, "proof_points", non_empty=False)
     elif content_type == "product_intro":
         _require_claim_list(value, "summary")
-        _require_claim_list(value, "pain_points")
+        _require_claim_list(value, "pain_points", non_empty=False)
         _validate_sections(value, "capabilities", 6)
-        _require_claim_list(value, "use_cases")
-        _require_claim_list(value, "boundaries")
+        _require_claim_list(value, "use_cases", non_empty=False)
+        _require_claim_list(value, "boundaries", non_empty=False)
     else:
         raise ValueError("Unsupported content type")
     return validate_grounding(value, list(hits))
