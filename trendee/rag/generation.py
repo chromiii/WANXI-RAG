@@ -1,6 +1,7 @@
 """Content-type specific schemas, validation, offline drafts and rendering."""
 from __future__ import annotations
 
+import re
 from typing import Any, Sequence
 
 from ..grounding import validate_grounding
@@ -46,7 +47,24 @@ def _validate_faq(value: dict[str, Any], min_items: int = 0, max_items: int = 8)
             raise ValueError("FAQ answer must be a claim object")
 
 
-def validate_document(content_type: str, value: dict[str, Any], hits: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _normalize_question(text: str) -> str:
+    return re.sub(r"[？?！!。．.\s]+$", "", str(text).strip())
+
+
+def _question_like(text: str) -> bool:
+    value = str(text).strip()
+    return bool(
+        re.search(r"[？?]$", value)
+        or re.search(r"为什么|什么|哪些|如何|怎么|是否|能否|有没有|多少|哪里|谁", value)
+    )
+
+
+def validate_document(
+    content_type: str,
+    value: dict[str, Any],
+    hits: Sequence[dict[str, Any]],
+    topic: str | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, dict) or not isinstance(value.get("title"), str) or not value["title"].strip():
         raise ValueError("document.title is required")
     limitations = value.get("limitations")
@@ -60,10 +78,16 @@ def validate_document(content_type: str, value: dict[str, Any], hits: Sequence[d
         _require_claim_list(value, "conclusion")
     elif content_type == "faq":
         _require_claim_list(value, "intro")
-        _validate_faq(value, 3, 8)
+        _validate_faq(value, 1, 6)
         _require_claim_list(value, "conclusion")
         if "sections" in value:
             raise ValueError("FAQ output must not contain article sections")
+        if topic and _question_like(topic):
+            first_question = value["faq"][0]["question"]
+            if _normalize_question(first_question) != _normalize_question(topic):
+                raise ValueError(
+                    "FAQ first question must directly preserve the user's original question"
+                )
     elif content_type == "brand_intro":
         _require_claim_list(value, "positioning")
         _require_claim_list(value, "value_propositions")
@@ -90,11 +114,13 @@ def offline_document(content_type: str, topic: str, hits: Sequence[dict[str, Any
 
     if content_type == "faq":
         faq = [
-            {"question": h.get("heading") or topic, "answer": _claim("品宣资料自述：" + h["text"], h)}
-            for h in chosen[:4]
+            {"question": topic, "answer": _claim("品宣资料自述：" + first["text"], first)}
         ]
-        while len(faq) < 3:
-            faq.append({"question": topic, "answer": _claim("品宣资料自述：" + first["text"], first)})
+        for h in chosen[1:4]:
+            faq.append({
+                "question": h.get("heading") or "补充问题",
+                "answer": _claim("品宣资料自述：" + h["text"], h),
+            })
         return {"title": topic, "intro": [_claim("以下回答仅依据已检索的万悉品宣资料。", first)],
                 "faq": faq, "conclusion": [_claim("以上回答均可回查对应 PDF 页。", first)],
                 "limitations": limitations}
