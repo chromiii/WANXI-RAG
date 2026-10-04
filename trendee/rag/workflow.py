@@ -127,6 +127,15 @@ class RAGWorkflow:
         plan = validate_query_plan(raw, topic)
         return self._merge_plan_with_intent_seeds(plan, intent)
 
+    @staticmethod
+    def _rerank_query(topic: str, intent: dict[str, Any]) -> str:
+        needs = "；".join(intent.get("retrieval_needs", []))
+        return (
+            f"{topic}\n"
+            f"最终写作类型：{intent.get('content_type_label', intent.get('content_type'))}\n"
+            f"需要优先覆盖的证据：{needs}"
+        ).strip()
+
     def run(
         self,
         topic: str,
@@ -226,12 +235,15 @@ class RAGWorkflow:
         # Rerank a wider pool than the final context Top-K so hard filters and
         # dedup can backfill from lower-ranked safe candidates.
         candidate_pool = min(12, max(top_k * 2, top_k + 4))
+        rerank_query = self._rerank_query(topic, intent)
+        query_plan["rerank_query"] = rerank_query
         raw_hits = self.retriever.search(
             original_query=topic,
             retrieval_queries=query_plan["retrieval_queries"],
             top_k=candidate_pool,
             rerank=True,
             rerank_candidates=candidate_pool,
+            rerank_query=rerank_query,
         )
         retrieved_hits = [adapt_pdf_hit(hit) for hit in raw_hits]
         trace.append({
