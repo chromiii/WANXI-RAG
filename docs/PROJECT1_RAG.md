@@ -14,14 +14,14 @@ Scope Guard
   ├─ out_of_scope -> stop
   └─ in_scope / ambiguous -> continue
   ↓
-Task Intent Parser
-  ├─ explicit type -> direct route
-  ├─ clear wording -> rule route
-  └─ ambiguous + live -> DeepSeek intent classification
+Task Intent Classifier
+  ├─ explicit type -> immutable presentation contract
+  ├─ auto -> LLM content-type classification
+  └─ LLM semantic focus + user goal
   ↓
 Query Planner
   ├─ keep original query
-  └─ optional 1-3 retrieval rewrites
+  └─ passthrough / rewrite / expand / decompose
   ↓
 Hybrid Retrieval
   ├─ Elasticsearch BM25
@@ -49,7 +49,6 @@ Type-specific Writer
 Grounding Validator
   ├─ citation IDs
   ├─ numeric guard
-  ├─ unsupported client-case guard
   └─ unsupported guarantee guard
   ↓
 Markdown + PDF references + workflow trace
@@ -57,31 +56,36 @@ Markdown + PDF references + workflow trace
 
 ## 3. Task Intent
 
-Task Intent 将“语义目标”和“呈现形式”分开：
+Task Intent 只负责“理解任务”，不负责生成检索词。
 
-- Primary Objective：用户原始 topic，是最高优先级，回答“用户真正想知道什么”；
-- Presentation Contract：Blog / FAQ / 品牌介绍 / 产品介绍，只决定输出结构；
-- Semantic Focus：从原始 topic 提取 customer_pain_points / geo_value / product_capabilities 等检索焦点；
-- Query Planner：先围绕 Primary Objective 找直接证据，再按 Presentation Contract 做必要补充，不得反向改写用户问题。
+系统将两个概念分开：
 
-若用户显式指定 `--type FAQ`，不会额外调用意图模型；若使用 `--type auto`，先用规则识别，只有 live 模式下的模糊输入才调用 DeepSeek。
+- **Primary Objective**：用户原始 topic，始终保留；
+- **Presentation Contract**：Blog / FAQ / 品牌介绍 / 产品介绍；
+- **Semantic Focus**：由 LLM 用简短标签概括用户真正关注的语义；
+- **User Goal**：由 LLM 用一句话概括用户希望得到的结果；
+- **Confidence**：用于调试和可观察性，不直接改变检索排序。
 
-## 4. Retrieval
+当用户显式指定内容类型时，类型不可被模型覆盖；LLM 只分析 semantic focus / user goal。使用 `auto` 时，LLM 同时决定 content type。离线模式不模拟语义理解，只使用 `generic` focus 和确定性 Blog fallback，以便做 pipeline regression test。
 
-原始 query 权重 1.0，rewrite query 权重 0.7。每个 query 分别执行 BM25 与 BGE-M3 dense retrieval，再由 weighted RRF 合并。Cross-encoder 最终始终使用原始 query 对候选文档重新评分，避免 query rewrite 偏离用户真正意图。
+运行时不再使用业务实体、问题关键词或具体客户名做 Intent 分类。
 
-## 5. Intent-aware Retrieval and Reranking
+## 4. Query Transformation
 
-Task Intent 会分别生成 `primary_retrieval_needs` 与 `format_retrieval_needs`。Query Planner 接收用户原问题、semantic focus、内容类型和两类 needs，其中 primary needs 优先级始终更高：
+Query Planner 独立负责检索前的问题重组。它可以选择：
 
-- FAQ：第一目标是直接回答用户原问题；若 topic 本身是问句，第一条 FAQ 必须保留该问题；
-- 品牌介绍：覆盖品牌定位、核心价值、能力、服务对象和可信信息；
-- 产品介绍：覆盖产品定位、用户问题、产品能力、使用场景和边界；
-- Blog：围绕主题补充背景、原因、业务事实和相关能力。
+- **passthrough**：原问题已经适合检索；
+- **rewrite**：生成更检索友好的等价表达；
+- **expand**：从同一问题的不同语义角度生成额外查询；
+- **decompose**：对包含多个独立信息需求的问题生成子查询。
 
-品牌介绍 / 产品介绍额外加入 deterministic schema-coverage query seeds，避免一个窄问题导致后续结构缺证据。
+原始 query 永远作为第一个检索通道保留，额外查询最多 3 个。Query Planner 不回答问题，也不补充公司事实。Prompt 不包含真实验收题作为 few-shot 示例，避免对固定 case 过拟合。
 
-Cross-encoder reranking 使用“原始主题 + 最终写作类型 + retrieval needs”的 task-aware rerank query。这样 Query Planner 扩大召回后，最终排序仍与实际写作任务对齐，而不是只对原始一句话做窄排序。
+## 5. Hybrid Retrieval and Reranking
+
+原始 query 权重 1.0，额外 query 权重 0.7。每个 query 分别执行 BM25 与 BGE-M3 dense retrieval，再由 weighted RRF 合并。
+
+Cross-encoder 使用“原始 topic + Intent Classifier 的 user goal / semantic focus”作为 rerank query；presentation type 不会通过 deterministic retrieval seeds 强行改变召回目标。
 
 ## 6. Post-Retrieval Processing and Context Construction
 
@@ -131,8 +135,9 @@ Writer 使用可直接发布的网站文案语气。普通正文禁止反复出�
 1. 所有 factual claim 必须有 citation。
 2. citation id 必须来自本轮 retrieved evidence。
 3. 生成文本中的数字必须出现在被引用 evidence 中。
-4. “招商银行应用设想”不得改写成已交付客户案例。
-5. 不允许无依据的 AI 推荐、排名或增长保证。
+4. 不允许无依据的 AI 推荐、排名或增长保证。
+
+当前 validator 不做完整 semantic entailment 判断；hypothetical / case 等证据性质通过 evidence metadata 和 Writer Prompt 约束，并由业务验收 case 继续观察。
 
 如果模型 JSON 不符合 schema / grounding，LLM client 会进行一次 bounded repair；再次失败则返回错误，不静默放行。
 
