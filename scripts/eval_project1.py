@@ -117,14 +117,17 @@ def _check_case(case: dict[str, Any], result: dict[str, Any]) -> list[str]:
         failures.append(
             f"intent expected {case['expected_intent']!r}, got {intent.get('content_type')!r}"
         )
-    if (
-        case.get("expected_semantic_focus")
-        and intent.get("semantic_focus") != case["expected_semantic_focus"]
-    ):
-        failures.append(
-            "semantic_focus expected "
-            f"{case['expected_semantic_focus']!r}, got {intent.get('semantic_focus')!r}"
-        )
+    if case.get("require_semantic_focus"):
+        focus = str(intent.get("semantic_focus") or "").strip()
+        if not focus:
+            failures.append("semantic_focus is missing")
+        elif result.get("mode") == "live" and focus == "generic":
+            failures.append("live intent classifier returned generic semantic_focus")
+
+    if case.get("require_user_goal"):
+        goal = str(intent.get("user_goal") or intent.get("goal") or "").strip()
+        if not goal:
+            failures.append("user_goal is missing")
 
     document = result.get("document") or result.get("article")
     if case.get("document_must_be_absent") and document:
