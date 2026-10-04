@@ -12,11 +12,6 @@ class ModelError(RuntimeError):
 
 def repair_instruction(error):
     base = "上次 JSON 未通过校验：" + error + "。"
-    if "招商银行应用设想" in error:
-        return (base + "“面向招商银行的GEO应用设想”不是已交付客户案例。"
-                "删除任何把招商银行描述为客户、合作方、已服务对象或已产生效果的表述；"
-                "如果当前主题并不要求招商银行，直接删除相关段落和 citation。"
-                "不要补造替代案例。仅返回完整 JSON。")
     if "numbers absent from cited evidence" in error:
         return base + "删除被引用证据中不存在的数字，或改写为不含该数字的事实表述。仅返回完整 JSON。"
     if "unknown citations" in error:
