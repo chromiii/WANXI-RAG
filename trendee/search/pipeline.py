@@ -79,7 +79,12 @@ def hybrid_query(
     if not query.strip():
         return []
     embedder = LocalSentenceEmbedder(
-        EmbeddingSettings(model_name=model_name, batch_size=1, device=device)
+        EmbeddingSettings(
+            model_name=model_name,
+            batch_size=1,
+            device=device,
+            local_files_only=True,
+        )
     )
     query_vector = embedder.encode_one(query)
 
