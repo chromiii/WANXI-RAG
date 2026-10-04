@@ -218,6 +218,31 @@ class CodeOnlySmokeTests(unittest.TestCase):
         )
         self.assertTrue(result["validation"]["citation_ids_valid"])
 
+    def test_scope_guard_recognizes_greeting_meta_intent(self):
+        result = precheck_scope("你好")
+        self.assertEqual(result["scope"], "meta")
+        self.assertEqual(result["meta_intent"], "greeting")
+
+    def test_rag_workflow_handles_identity_without_retrieval(self):
+        class FakeConfig:
+            api_key = ""
+            model = "fake"
+            def mode(self, requested="auto"):
+                return "offline"
+
+        class ShouldNotRunRetriever:
+            def search(self, **kwargs):
+                raise AssertionError("retrieval must not run for meta intent")
+
+        result = RAGWorkflow(FakeConfig(), ShouldNotRunRetriever()).run(
+            "你是谁？",
+            content_type="auto",
+            mode="offline",
+        )
+        self.assertEqual(result["status"], "meta")
+        self.assertEqual(result["meta_intent"], "identity")
+        self.assertIn("RAG 写作助手", result["message"])
+
     def test_scope_guard_rejects_obvious_unrelated_question(self):
         result = precheck_scope("帮我写一份杭州旅游攻略")
         self.assertEqual(result["scope"], "out_of_scope")
