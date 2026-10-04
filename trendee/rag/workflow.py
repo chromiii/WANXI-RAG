@@ -38,6 +38,27 @@ def _prompt(name: str, include_common: bool = True) -> str:
     return common + "\n\n" + specific
 
 
+def source_visuals(refs: list[dict[str, Any]], max_items: int = 3) -> list[dict[str, Any]]:
+    """Return unique PDF page visuals actually used by generated citations."""
+    visuals: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ref in refs:
+        asset_path = ref.get("asset_path")
+        if not asset_path or asset_path in seen:
+            continue
+        seen.add(asset_path)
+        visuals.append({
+            "id": ref.get("id"),
+            "page": ref.get("page"),
+            "heading": ref.get("heading"),
+            "source": ref.get("source"),
+            "asset_path": asset_path,
+        })
+        if len(visuals) >= max_items:
+            break
+    return visuals
+
+
 def adapt_pdf_hit(hit: dict[str, Any]) -> dict[str, Any]:
     """Normalize Elasticsearch evidence to the shared grounding contract."""
     return {
@@ -389,6 +410,7 @@ class RAGWorkflow:
         validation = validate_document(intent["content_type"], document, generation_hits, topic=topic)
         used_ids = used_citations(document)
         refs = reference_list(retrieval_hits, used_ids)
+        visuals = source_visuals(refs, max_items=3)
         trace.append({
             "step": "grounding_validation",
             "status": "ok",
@@ -421,6 +443,7 @@ class RAGWorkflow:
             "article": document,
             "markdown": markdown,
             "references": refs,
+            "source_visuals": visuals,
             "retrieval_hits": retrieval_hits,
             "context": {
                 "evidence_ids": context["evidence_ids"],
