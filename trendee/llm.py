@@ -15,14 +15,14 @@ class Client:
         self.config = config
         self.calls = []
 
-    def json(self, system, user, validator=None):
+    def json(self, system, user, validator=None, purpose="generation"):
         self.config.validate_api()
         if not self.config.api_key:
             raise ModelError("DEEPSEEK_API_KEY is not configured")
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         last_error = ""
         for repair in range(2):
-            data = self._request(messages)
+            data = self._request(messages, purpose=purpose)
             message = data.get("choices", [{}])[0]
             content = message.get("message", {}).get("content", "")
             try:
@@ -48,7 +48,7 @@ class Client:
                     ])
         raise ModelError("模型输出两次未通过校验：" + last_error)
 
-    def _request(self, messages):
+    def _request(self, messages, purpose="generation"):
         payload = {"model": self.config.model, "messages": messages,
                    "response_format": {"type": "json_object"},
                    "temperature": .2, "max_tokens": self.config.max_tokens, "stream": False}
@@ -67,7 +67,7 @@ class Client:
                     data = json.loads(raw)
                 if not data.get("choices"):
                     raise ModelError("API returned no choices")
-                self.calls.append({"model": self.config.model, "usage": data.get("usage", {}),
+                self.calls.append({"purpose": purpose, "model": self.config.model, "usage": data.get("usage", {}),
                                    "duration_ms": round((time.perf_counter()-started)*1000),
                                    "attempt": attempt + 1})
                 return data
