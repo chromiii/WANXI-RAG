@@ -156,9 +156,54 @@ class CodeOnlySmokeTests(unittest.TestCase):
         )
         self.assertEqual(intent["content_type"], "product_intro")
         self.assertIn("产品核心能力与功能", intent["retrieval_needs"])
-        seeds = retrieval_seed_queries("product_intro")
+        seeds = retrieval_seed_queries("product_intro", intent["semantic_focus"])
         self.assertTrue(any("产品能力" in query for query in seeds))
         self.assertTrue(any("使用场景" in query for query in seeds))
+
+    def test_explicit_product_format_preserves_primary_question_focus(self):
+        intent = parse_task_intent(
+            topic="万悉科技主要帮助客户解决什么问题？",
+            audience="市场团队",
+            requested_type="产品介绍",
+            active_mode="offline",
+        )
+        self.assertEqual(intent["content_type"], "product_intro")
+        self.assertEqual(intent["semantic_focus"], "customer_pain_points")
+        self.assertEqual(intent["primary_question"], "万悉科技主要帮助客户解决什么问题？")
+        self.assertIn("客户面临的具体问题、痛点或业务挑战", intent["primary_retrieval_needs"])
+
+    def test_faq_first_question_must_preserve_original_question(self):
+        hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌在AI问答中的可见性。", "source": "x", "page": 1}]
+        good = {
+            "title": "FAQ",
+            "intro": [{"text": "以下基于资料。", "citations": ["pdf-p001-c01"]}],
+            "faq": [{
+                "question": "万悉科技主要帮助客户解决什么问题？",
+                "answer": {"text": "主要帮助品牌提升AI可见性。", "citations": ["pdf-p001-c01"]},
+            }],
+            "conclusion": [{"text": "以上基于资料。", "citations": ["pdf-p001-c01"]}],
+            "limitations": [],
+        }
+        result = validate_document(
+            "faq",
+            good,
+            hits,
+            topic="万悉科技主要帮助客户解决什么问题？",
+        )
+        self.assertTrue(result["citation_ids_valid"])
+
+        bad = dict(good)
+        bad["faq"] = [{
+            "question": "万悉科技有哪些特点？",
+            "answer": {"text": "主要帮助品牌提升AI可见性。", "citations": ["pdf-p001-c01"]},
+        }]
+        with self.assertRaisesRegex(ValueError, "FAQ first question"):
+            validate_document(
+                "faq",
+                bad,
+                hits,
+                topic="万悉科技主要帮助客户解决什么问题？",
+            )
 
     def test_faq_schema_is_distinct_from_blog(self):
         hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌在AI问答引擎中的可见性。", "source": "x", "page": 1}]
@@ -328,6 +373,24 @@ class CodeOnlySmokeTests(unittest.TestCase):
         by_id = {item["id"]: item for item in result["all_hits"]}
         self.assertEqual(by_id["pdf-p019-c01"]["postprocess_status"], "filtered")
         self.assertEqual(by_id["pdf-p019-c01"]["evidence_type"], "hypothetical")
+
+    def test_product_postprocessor_filters_media_but_backfills(self):
+        hits = [
+            {"id": "p1", "text": "媒体报道万悉科技。", "page": 3, "heading": "权威媒体广泛报道", "rank": 1},
+            {"id": "p2", "text": "Trendee帮助企业提升AI可见性。", "page": 2, "heading": "产品定位", "rank": 2},
+            {"id": "p3", "text": "大型集团面临信息复杂、口径分散问题。", "page": 18, "heading": "大型集团项目经验", "rank": 3},
+        ]
+        result = process_retrieved_hits(
+            hits,
+            topic="万悉科技主要帮助客户解决什么问题？",
+            content_type="product_intro",
+            top_n=2,
+            max_chars=8000,
+        )
+        self.assertEqual(result["selected_ids"], ["p2", "p3"])
+        by_id = {item["id"]: item for item in result["all_hits"]}
+        self.assertEqual(by_id["p1"]["postprocess_status"], "filtered")
+        self.assertEqual(by_id["p1"]["postprocess_reason"], "media_not_admissible_for_product_intro")
 
     def test_postprocessor_deduplicates_near_duplicate_chunks(self):
         hits = [
