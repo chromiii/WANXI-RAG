@@ -30,18 +30,21 @@ The CI workflow runs the full suite on every push.
 | `test_project1_intent.py` | scope guard, meta intent, explicit/auto content type, semantic focus, original-question preservation |
 | `test_project1_grounding.py` | unknown citations, empty citations, numeric hallucination, hypothetical-case misuse, unsupported guarantees, publishable prose |
 | `test_project1_pdf.py` | physical page preservation, page renders, sparse pages, repeated boilerplate, stable chunk IDs, max chunk length, no cross-page merge |
-| `test_project1_postprocess.py` | hard safety filter, hypothetical handling, media filter for product pages, near-duplicate removal, Top-N backfill, context budget |
+| `test_project1_postprocess.py` | hard safety filter, hypothetical handling, reranker-order preservation, near-duplicate removal, Top-N backfill, context budget |
 | `test_project1_generation.py` | four writer schema contracts, standalone FAQ behavior, three extension FAQs, markdown order, visual provenance |
+| `test_project1_evidence_gate.py` | generic evidence sufficiency contract, no-hit behavior, offline passthrough, arbitrary missing facts |
 
 PDF tests generate temporary synthetic PDFs in the test process. Employer PDF content is not committed to GitHub.
 
 ## 2. Business acceptance cases
 
-Cases are stored in:
+Cases are stored in a single shared catalog:
 
 ```text
 eval/project1_cases.json
 ```
+
+The evaluator, CLI `demo` command and Web quick-case buttons all read this same catalog.
 
 The current matrix includes:
 
@@ -122,7 +125,7 @@ For early-stop cases it checks:
 - prompt injection is rejected before generation;
 - unrelated queries stop as `out_of_scope`;
 - greetings/self-description use the meta route;
-- unsupported financial facts return `insufficient_evidence`;
+- live mode can return `insufficient_evidence` for arbitrary unsupported facts via the generic evidence sufficiency judge;
 - early-stop cases do not unnecessarily call the LLM where applicable.
 
 ## 4. Runtime PDF integrity checks
@@ -147,7 +150,7 @@ The suite distinguishes several hallucination classes:
 2. **Numeric hallucination** — output introduces a number absent from cited evidence.
 3. **Case-status hallucination** — an application hypothesis becomes a delivered client case.
 4. **Guarantee hallucination** — unsupported recommendation/ranking/growth guarantee.
-5. **Missing-fact hallucination** — user asks for revenue/funding facts not present in the source.
+5. **Missing-fact hallucination** — user asks for a specific fact not present in the source; the live evidence-sufficiency judge is generic rather than tied to a revenue/funding field list.
 6. **Presentation hallucination** — Writer fills unsupported product sections merely to satisfy a schema.
 
 These checks complement, but do not claim to prove, full semantic entailment.
