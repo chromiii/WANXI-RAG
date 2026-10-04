@@ -121,8 +121,22 @@ function renderEvidence(result) {
     root.append(node("p", "query-note", "没有返回证据。"));
     return;
   }
-  hits.forEach((hit, index) => {
-    const item = node("div", "evidence-item");
+
+  const priorities = [
+    ["core", "CORE · 核心证据"],
+    ["supporting", "SUPPORTING · 辅助证据"],
+    ["low_priority", "LOW PRIORITY · 低优先级"],
+    ["excluded", "EXCLUDED · 当前任务排除"],
+    ["unclassified", "UNCLASSIFIED"],
+  ];
+  const grouped = Object.fromEntries(priorities.map(([key]) => [key, []]));
+  hits.forEach(hit => {
+    const key = grouped[hit.evidence_priority] ? hit.evidence_priority : "unclassified";
+    grouped[key].push(hit);
+  });
+
+  function renderHit(hit, index) {
+    const item = node("div", "evidence-item priority-" + (hit.evidence_priority || "unclassified"));
     item.id = "evidence-" + hit.id;
 
     const trigger = node("button", "evidence-trigger");
@@ -134,10 +148,27 @@ function renderEvidence(result) {
     title.append(node("span", "", "PDF p." + (hit.page ?? "?") + " · " + hit.id));
     trigger.append(title);
 
+    const scoreBox = node("div", "evidence-score");
+    if (hit.evidence_type) {
+      scoreBox.append(node("span", "priority-badge badge-" + (hit.evidence_priority || "unclassified"), (hit.evidence_priority || "unclassified").toUpperCase()));
+      scoreBox.append(node("span", "evidence-type-badge", hit.evidence_type.toUpperCase()));
+    }
     const score = hit.reranker_score ?? hit.score ?? hit.rrf_score;
-    trigger.append(node("div", "evidence-score", score === undefined || score === null ? "" : "score " + Number(score).toFixed(4)));
+    if (score !== undefined && score !== null) {
+      scoreBox.append(node("span", "score-line", "score " + Number(score).toFixed(4)));
+    }
+    trigger.append(scoreBox);
 
     const panel = node("div", "evidence-panel");
+    if (hit.evidence_reason) {
+      const policy = node("div", "evidence-policy-row");
+      policy.append(node("strong", "", "Policy · "));
+      policy.append(node("span", "", hit.evidence_reason));
+      panel.append(policy);
+    }
+    if ((hit.matched_signals || []).length) {
+      panel.append(node("div", "matched-signals", "Matched signals · " + hit.matched_signals.join(" / ")));
+    }
     panel.append(node("p", "evidence-text", hit.text || hit.quote || ""));
 
     const channels = node("div", "channel-grid");
@@ -159,7 +190,19 @@ function renderEvidence(result) {
 
     trigger.addEventListener("click", () => item.classList.toggle("open"));
     item.append(trigger, panel);
-    root.append(item);
+    return item;
+  }
+
+  priorities.forEach(([key, label]) => {
+    const group = grouped[key];
+    if (!group.length) return;
+    const section = node("div", "evidence-group");
+    const header = node("div", "evidence-group-header");
+    header.append(node("strong", "", label));
+    header.append(node("span", "", group.length + " 条"));
+    section.append(header);
+    group.forEach((hit, index) => section.append(renderHit(hit, index)));
+    root.append(section);
   });
 }
 
