@@ -239,16 +239,62 @@ class RAGWorkflow:
                 "created_at_utc": now_utc(),
             }
 
-        context = build_context(hits, topic=topic)
+        context = build_context(
+            hits,
+            topic=topic,
+            retrieval_intent=query_plan.get("intent", ""),
+        )
+        selection_by_id = {
+            item["id"]: item for item in context["evidence_selection"]
+        }
+        for hit in hits:
+            decision = selection_by_id.get(hit["id"], {})
+            hit["evidence_priority"] = decision.get("priority")
+            hit["evidence_type"] = decision.get("evidence_type")
+            hit["evidence_reason"] = decision.get("reason")
+            hit["evidence_focus"] = decision.get("focus")
+            hit["matched_signals"] = decision.get("matched_signals", [])
+
+        trace.append({
+            "step": "evidence_selection",
+            "status": "ok",
+            "focus": context["focus"],
+            "priority_counts": context["priority_counts"],
+            "type_counts": context["type_counts"],
+        })
+
         generation_ids = set(context["evidence_ids"])
         generation_hits = [hit for hit in hits if hit["id"] in generation_ids]
+        if not generation_hits:
+            trace.append({
+                "step": "context_building",
+                "status": "insufficient_evidence",
+                "evidence_count": 0,
+            })
+            return {
+                "status": "insufficient_evidence",
+                "project": "rag_writer",
+                "mode": active_mode,
+                "topic": topic,
+                "task_intent": intent,
+                "query_plan": query_plan,
+                "message": "检索到了候选资料，但 Evidence Policy 未找到足够适合进入生成上下文的证据。",
+                "scope": scope,
+                "evidence_selection": context["evidence_selection"],
+                "retrieval_hits": hits,
+                "references": reference_list(hits),
+                "workflow_trace": trace,
+                "model_calls": client.calls,
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+                "created_at_utc": now_utc(),
+            }
+
         trace.append({
             "step": "context_building",
             "status": "ok",
             "evidence_count": context["evidence_count"],
             "context_chars": context["context_chars"],
             "evidence_ids": context["evidence_ids"],
-            "excluded_evidence": context["excluded_evidence"],
         })
 
         if active_mode == "live":
@@ -301,6 +347,7 @@ class RAGWorkflow:
             "scope": scope,
             "task_intent": intent,
             "query_plan": query_plan,
+            "evidence_selection": context["evidence_selection"],
             "document": document,
             "article": document,
             "markdown": markdown,
@@ -310,7 +357,11 @@ class RAGWorkflow:
                 "evidence_ids": context["evidence_ids"],
                 "evidence_count": context["evidence_count"],
                 "context_chars": context["context_chars"],
+                "focus": context["focus"],
+                "priority_counts": context["priority_counts"],
+                "type_counts": context["type_counts"],
                 "excluded_evidence": context["excluded_evidence"],
+                "low_priority_evidence": context["low_priority_evidence"],
             },
             "validation": validation,
             "workflow_trace": trace,
