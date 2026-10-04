@@ -14,6 +14,7 @@ from trendee.search.embeddings import embedding_text
 from trendee.search.query_planner import passthrough_plan, validate_query_plan
 from trendee.rag.intent import canonical_content_type, parse_task_intent
 from trendee.rag.generation import validate_document, render_markdown
+from trendee.rag.workflow import RAGWorkflow
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
 
@@ -160,6 +161,58 @@ class CodeOnlySmokeTests(unittest.TestCase):
         markdown = render_markdown("faq", faq, hits)
         self.assertIn("## 问题1", markdown)
         self.assertNotIn("## FAQ\n", markdown)
+
+    def test_rag_workflow_offline_orchestrates_all_stages(self):
+        class FakeConfig:
+            api_key = ""
+            model = "fake"
+            def mode(self, requested="auto"):
+                return "offline"
+
+        class FakeRetriever:
+            def search(self, **kwargs):
+                return [
+                    {
+                        "chunk_id": "pdf-p001-c01",
+                        "content": "GEO 可以帮助品牌组织更容易被 AI 理解和引用的公开内容。",
+                        "source_name": "sample.pdf",
+                        "page": 1,
+                        "heading": "GEO 价值",
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "rrf_score": 0.03,
+                        "rank": 1,
+                    },
+                    {
+                        "chunk_id": "pdf-p002-c01",
+                        "content": "出海品牌需要统一、结构化的品牌知识资产。",
+                        "source_name": "sample.pdf",
+                        "page": 2,
+                        "heading": "知识资产",
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "rrf_score": 0.02,
+                        "rank": 2,
+                    },
+                ]
+
+        result = RAGWorkflow(FakeConfig(), FakeRetriever()).run(
+            "为什么中国出海品牌需要进行 GEO 优化？",
+            content_type="auto",
+            mode="offline",
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["task_intent"]["content_type"], "blog")
+        self.assertEqual(
+            [step["step"] for step in result["workflow_trace"]],
+            [
+                "task_intent",
+                "query_planning",
+                "hybrid_retrieval",
+                "context_building",
+                "generation",
+                "grounding_validation",
+            ],
+        )
+        self.assertTrue(result["validation"]["citation_ids_valid"])
 
     def test_embedding_text_combines_heading_and_content(self):
         value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
