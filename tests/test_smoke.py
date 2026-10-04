@@ -67,7 +67,13 @@ class CodeOnlySmokeTests(unittest.TestCase):
         ]
         fused = rrf_fuse([lexical, dense], top_k=3)
         self.assertEqual(fused[0]["chunk_id"], "b")
-        self.assertEqual(fused[0]["rrf_ranks"], {"channel_1": 2, "channel_2": 1})
+        self.assertEqual(
+            fused[0]["retrieval_channels"],
+            {
+                "channel_1": {"rank": 2, "score": 0.0},
+                "channel_2": {"rank": 1, "score": 0.0},
+            },
+        )
 
     def test_embedding_text_combines_heading_and_content(self):
         value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
