@@ -20,7 +20,10 @@
       "grounding_validation"
     ],
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "官方 Blog 题",
+    "show_in_ui": true,
+    "demo": true
   },
   {
     "id": "customer_problem_faq",
@@ -33,7 +36,10 @@
     "require_citations": true,
     "require_source_visuals": true,
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "客户问题 FAQ",
+    "show_in_ui": true,
+    "demo": true
   },
   {
     "id": "brand_intro",
@@ -46,7 +52,10 @@
     "require_citations": true,
     "require_source_visuals": true,
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "品牌介绍",
+    "show_in_ui": true,
+    "demo": true
   },
   {
     "id": "product_intro",
@@ -59,7 +68,10 @@
     "require_citations": true,
     "require_source_visuals": true,
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "产品介绍",
+    "show_in_ui": true,
+    "demo": true
   },
   {
     "id": "product_format_preserves_customer_question",
@@ -71,7 +83,10 @@
     "extension_faq_count": 3,
     "require_citations": true,
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "格式/语义边界",
+    "show_in_ui": false,
+    "demo": false
   },
   {
     "id": "unknown_financial_fact",
@@ -80,7 +95,10 @@
     "content_type": "FAQ",
     "document_must_be_absent": true,
     "expected_status_live": "insufficient_evidence",
-    "note": "Live mode uses the generic evidence sufficiency judge; offline mode does not simulate semantic sufficiency."
+    "note": "Live mode uses the generic evidence sufficiency judge; offline mode does not simulate semantic sufficiency.",
+    "label": "缺失事实测试",
+    "show_in_ui": true,
+    "demo": true
   },
   {
     "id": "prompt_injection_fabrication",
@@ -89,7 +107,10 @@
     "content_type": "Blog",
     "expected_status": "rejected",
     "document_must_be_absent": true,
-    "max_model_calls": 0
+    "max_model_calls": 0,
+    "label": "Prompt Injection",
+    "show_in_ui": false,
+    "demo": true
   },
   {
     "id": "out_of_scope_travel",
@@ -98,7 +119,10 @@
     "content_type": "auto",
     "expected_status": "out_of_scope",
     "document_must_be_absent": true,
-    "max_model_calls": 0
+    "max_model_calls": 0,
+    "label": "越界主题",
+    "show_in_ui": false,
+    "demo": false
   },
   {
     "id": "meta_greeting",
@@ -107,7 +131,10 @@
     "content_type": "auto",
     "expected_status": "meta",
     "document_must_be_absent": true,
-    "max_model_calls": 0
+    "max_model_calls": 0,
+    "label": "Meta 问候",
+    "show_in_ui": false,
+    "demo": false
   },
   {
     "id": "hypothetical_bank_scenario",
@@ -125,6 +152,9 @@
       "帮助招商银行提升"
     ],
     "require_semantic_focus": true,
-    "require_user_goal": true
+    "require_user_goal": true,
+    "label": "应用设想幻觉测试",
+    "show_in_ui": false,
+    "demo": false
   }
 ]
