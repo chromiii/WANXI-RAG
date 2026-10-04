@@ -12,12 +12,12 @@ from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body, rrf_fuse
 from trendee.search.embeddings import embedding_text
 from trendee.search.query_planner import passthrough_plan, validate_query_plan
-from trendee.rag.intent import canonical_content_type, parse_task_intent
+from trendee.rag.intent import canonical_content_type, parse_task_intent, retrieval_seed_queries
 from trendee.rag.generation import validate_document, render_markdown
 from trendee.rag.workflow import RAGWorkflow
 from trendee.rag.scope import precheck_scope
 from trendee.rag.context import build_context
-from trendee.rag.evidence_policy import evaluate_evidence, classify_evidence_type
+from trendee.rag.postprocess import process_retrieved_hits, evidence_metadata, near_duplicate
 from trendee.runlog import RunLogger
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
@@ -147,6 +147,19 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(canonical_content_type("产品介绍"), "product_intro")
         self.assertEqual(canonical_content_type("auto"), "auto")
 
+    def test_product_intent_has_schema_retrieval_needs(self):
+        intent = parse_task_intent(
+            topic="万悉科技主要帮助客户解决什么问题？",
+            audience="市场团队",
+            requested_type="产品介绍",
+            active_mode="offline",
+        )
+        self.assertEqual(intent["content_type"], "product_intro")
+        self.assertIn("产品核心能力与功能", intent["retrieval_needs"])
+        seeds = retrieval_seed_queries("product_intro")
+        self.assertTrue(any("产品能力" in query for query in seeds))
+        self.assertTrue(any("使用场景" in query for query in seeds))
+
     def test_faq_schema_is_distinct_from_blog(self):
         hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌在AI问答引擎中的可见性。", "source": "x", "page": 1}]
         faq = {
@@ -212,7 +225,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
                 "task_intent",
                 "query_planning",
                 "hybrid_retrieval",
-                "evidence_selection",
+                "post_retrieval_processing",
                 "context_building",
                 "generation",
                 "grounding_validation",
@@ -272,43 +285,16 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(result["status"], "out_of_scope")
         self.assertEqual(result["workflow_trace"][0]["step"], "scope_guard")
 
-    def test_evidence_policy_is_query_conditioned(self):
+    def test_postprocessor_filters_hypothetical_without_reranking(self):
         hits = [
             {
-                "id": "pdf-p002-c01",
-                "text": "Trendee提升品牌在AI问答引擎中的可见性，并连接商品与全球用户需求。",
-                "source": "sample.pdf",
-                "page": 2,
-                "heading": "品牌定位",
-                "rank": 2,
-                "reranker_score": 0.47,
-            },
-            {
-                "id": "pdf-p018-c01",
-                "text": "大型集团GEO难点包括信息复杂、口径分散、组织协同难，并需要统一知识资产。",
-                "source": "sample.pdf",
-                "page": 18,
-                "heading": "大型集团项目经验",
-                "rank": 1,
-                "reranker_score": 0.71,
-            },
-            {
                 "id": "pdf-p013-c01",
-                "text": "品宣资料称LLM原生GEO技术为行业合规标杆。",
+                "text": "合规GEO强调传递真实价值。",
                 "source": "sample.pdf",
                 "page": 13,
                 "heading": "合规GEO",
-                "rank": 3,
+                "rank": 1,
                 "reranker_score": 0.67,
-            },
-            {
-                "id": "pdf-p035-c01",
-                "text": "服务行业包括电商零售、制造、SaaS、金融、教育等。",
-                "source": "sample.pdf",
-                "page": 35,
-                "heading": "服务行业",
-                "rank": 5,
-                "reranker_score": 0.18,
             },
             {
                 "id": "pdf-p019-c01",
@@ -316,24 +302,78 @@ class CodeOnlySmokeTests(unittest.TestCase):
                 "source": "sample.pdf",
                 "page": 19,
                 "heading": "面向招商银行的GEO应用设想",
-                "rank": 4,
-                "reranker_score": 0.30,
+                "rank": 2,
+                "reranker_score": 0.60,
+            },
+            {
+                "id": "pdf-p018-c01",
+                "text": "大型集团GEO难点包括信息复杂、口径分散、组织协同难。",
+                "source": "sample.pdf",
+                "page": 18,
+                "heading": "大型集团项目经验",
+                "rank": 3,
+                "reranker_score": 0.47,
             },
         ]
-        policy = evaluate_evidence(
+        result = process_retrieved_hits(
             hits,
             topic="万悉科技主要帮助客户解决什么问题？",
-            retrieval_intent="customer_pain_points",
+            top_n=2,
+            max_chars=8000,
         )
-        by_id = {item["id"]: item for item in policy["decisions"]}
-        self.assertEqual(by_id["pdf-p018-c01"]["priority"], "core")
-        self.assertEqual(by_id["pdf-p002-c01"]["priority"], "core")
-        self.assertEqual(by_id["pdf-p013-c01"]["priority"], "supporting")
-        self.assertEqual(by_id["pdf-p035-c01"]["priority"], "low_priority")
-        self.assertEqual(by_id["pdf-p019-c01"]["priority"], "excluded")
+        self.assertEqual(
+            result["selected_ids"],
+            ["pdf-p013-c01", "pdf-p018-c01"],
+        )
+        by_id = {item["id"]: item for item in result["all_hits"]}
+        self.assertEqual(by_id["pdf-p019-c01"]["postprocess_status"], "filtered")
         self.assertEqual(by_id["pdf-p019-c01"]["evidence_type"], "hypothetical")
 
-    def test_hypothetical_can_be_core_when_explicitly_requested(self):
+    def test_postprocessor_deduplicates_near_duplicate_chunks(self):
+        hits = [
+            {
+                "id": "a",
+                "text": "万悉科技通过结构化品牌内容提升AI可见性并形成统一知识资产。",
+                "page": 18,
+                "heading": "知识治理",
+                "rank": 1,
+            },
+            {
+                "id": "b",
+                "text": "万悉科技通过结构化品牌内容提升 AI 可见性，并形成统一知识资产。",
+                "page": 18,
+                "heading": "知识治理",
+                "rank": 2,
+            },
+            {
+                "id": "c",
+                "text": "Trendee提供AI可见性监测与持续优化。",
+                "page": 20,
+                "heading": "持续监测",
+                "rank": 3,
+            },
+        ]
+        self.assertTrue(near_duplicate(hits[0], hits[1]))
+        result = process_retrieved_hits(
+            hits,
+            topic="介绍万悉科技GEO能力",
+            top_n=3,
+            max_chars=8000,
+        )
+        self.assertEqual(result["selected_ids"], ["a", "c"])
+        by_id = {item["id"]: item for item in result["all_hits"]}
+        self.assertEqual(by_id["b"]["postprocess_status"], "deduplicated")
+
+    def test_evidence_metadata_does_not_turn_incidental_media_word_into_media_type(self):
+        hit = {
+            "heading": "大型集团项目经验：知识治理能力",
+            "text": "整合官网、媒体、社媒等信源，解决信息复杂、口径分散问题。",
+        }
+        metadata = evidence_metadata(hit)
+        self.assertEqual(metadata["primary_type"], "case")
+        self.assertIn("media_reference", metadata["risk_flags"])
+
+    def test_hypothetical_is_kept_when_explicitly_requested(self):
         hits = [{
             "id": "pdf-p019-c01",
             "text": "面向招商银行的GEO应用设想。",
@@ -343,42 +383,30 @@ class CodeOnlySmokeTests(unittest.TestCase):
             "rank": 1,
             "reranker_score": 0.80,
         }]
-        policy = evaluate_evidence(
+        result = process_retrieved_hits(
             hits,
             topic="万悉科技对招商银行有什么GEO应用设想？",
-            retrieval_intent="case",
+            top_n=1,
         )
-        item = policy["decisions"][0]
-        self.assertEqual(item["priority"], "core")
-        self.assertEqual(item["evidence_type"], "hypothetical")
+        self.assertEqual(result["selected_ids"], ["pdf-p019-c01"])
+        self.assertEqual(result["selected"][0]["evidence_type"], "hypothetical")
 
-    def test_evidence_type_marks_marketing_claim(self):
-        hit = {
-            "heading": "合规GEO",
-            "text": "品宣资料称该技术是行业合规标杆。",
-        }
-        self.assertEqual(classify_evidence_type(hit), "marketing_claim")
-
-    def test_generation_context_excludes_unrequested_hypothetical_case(self):
+    def test_context_builder_only_serializes_selected_hits(self):
         hits = [
             {
-                "id": "pdf-p019-c01",
-                "text": "面向招商银行的GEO应用设想，如果金融机构建设AI知识基建……",
-                "source": "sample.pdf",
-                "page": 19,
-                "heading": "面向招商银行的GEO应用设想",
-            },
-            {
                 "id": "pdf-p018-c01",
-                "text": "大型集团GEO难点包括信息复杂、口径分散、组织协同难。",
+                "text": "大型集团存在信息复杂、口径分散、组织协同难。",
                 "source": "sample.pdf",
                 "page": 18,
-                "heading": "大型集团项目经验",
-            },
+                "heading": "知识治理",
+                "evidence_type": "case",
+                "risk_flags": ["media_reference"],
+            }
         ]
-        context = build_context(hits, topic="为什么中国出海品牌需要进行 GEO 优化？")
+        context = build_context(hits)
         self.assertEqual(context["evidence_ids"], ["pdf-p018-c01"])
-        self.assertEqual(context["excluded_evidence"][0]["id"], "pdf-p019-c01")
+        self.assertIn("evidence_type=case", context["text"])
+        self.assertIn("risk_flags=media_reference", context["text"])
 
     def test_run_logger_records_complete_payload_and_redacts_secret(self):
         import tempfile
