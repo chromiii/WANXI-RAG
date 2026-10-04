@@ -1,4 +1,4 @@
-"""Page-preserving PDF ingestion and bounded, same-origin website capture."""
+"""Shared timestamps/text normalization and bounded same-origin website capture."""
 from datetime import datetime, timezone
 import hashlib
 from html.parser import HTMLParser
