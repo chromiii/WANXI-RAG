@@ -88,7 +88,7 @@ def make_handler(workbench):
                 mode = payload.get("mode", "auto")
                 if path == "/api/write":
                     result = workbench.write(payload.get("topic", ""), payload.get("audience", "中国出海品牌的市场与运营团队"),
-                                             payload.get("content_type", "Blog"), mode, int(payload.get("top_k", 6)))
+                                             payload.get("content_type", "auto"), mode, int(payload.get("top_k", 6)))
                 elif path == "/api/route":
                     result = workbench.route(payload.get("question", ""), payload.get("history", []), mode, payload.get("router", "rules"))
                 elif path == "/api/agents":
