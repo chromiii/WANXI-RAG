@@ -141,6 +141,7 @@ class HybridRetriever:
         rerank: bool = True,
         rerank_candidates: int = 12,
         expansion_weight: float = 0.70,
+        rerank_query: str | None = None,
     ) -> list[dict[str, Any]]:
         queries = self._queries(original_query, retrieval_queries)
         if not queries:
@@ -182,7 +183,7 @@ class HybridRetriever:
             return result
 
         return self._get_reranker().rerank(
-            original_query,
+            (rerank_query or original_query).strip(),
             candidates,
             top_k=top_k,
         )
