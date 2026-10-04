@@ -31,7 +31,7 @@ def load_env(path=ROOT / ".env"):
 class Config:
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-flash"
+    model: str = "deepseek-v4-flash"
     timeout: int = 90
     max_tokens: int = 5000
     elasticsearch_url: str = "http://127.0.0.1:9200"
@@ -43,7 +43,7 @@ class Config:
         return cls(
             api_key=os.getenv("DEEPSEEK_API_KEY", os.getenv("LLM_API_KEY", "")),
             base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-            model=os.getenv("LLM_MODEL", "deepseek-flash"),
+            model=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
             timeout=int(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
             max_tokens=int(os.getenv("LLM_MAX_TOKENS", "5000")),
             elasticsearch_url=os.getenv("ELASTICSEARCH_URL", "http://127.0.0.1:9200").rstrip("/"),
