@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import ROOT, runtime_data_dir
+from .demo_cases import ui_project1_cases
 from .runlog import RunLogger
 from .service import Workbench
 
@@ -89,6 +90,9 @@ def make_handler(workbench, logger=None, data_dir=None):
                     "relative_path": "logs/rag_runs.jsonl",
                 }
                 self.json_response(info)
+                return
+            if path == "/api/cases":
+                self.json_response({"cases": ui_project1_cases()})
                 return
             if path == "/api/logs":
                 params = parse_qs(parsed.query)
