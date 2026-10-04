@@ -15,6 +15,8 @@ from trendee.search.query_planner import passthrough_plan, validate_query_plan
 from trendee.rag.intent import canonical_content_type, parse_task_intent
 from trendee.rag.generation import validate_document, render_markdown
 from trendee.rag.workflow import RAGWorkflow
+from trendee.rag.scope import precheck_scope
+from trendee.rag.context import build_context
 from trendee.runlog import RunLogger
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
@@ -205,6 +207,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(
             [step["step"] for step in result["workflow_trace"]],
             [
+                "scope_guard",
                 "task_intent",
                 "query_planning",
                 "hybrid_retrieval",
@@ -214,6 +217,54 @@ class CodeOnlySmokeTests(unittest.TestCase):
             ],
         )
         self.assertTrue(result["validation"]["citation_ids_valid"])
+
+    def test_scope_guard_rejects_obvious_unrelated_question(self):
+        result = precheck_scope("帮我写一份杭州旅游攻略")
+        self.assertEqual(result["scope"], "out_of_scope")
+
+    def test_scope_guard_accepts_geo_question(self):
+        result = precheck_scope("GEO 和 SEO 有什么区别？")
+        self.assertEqual(result["scope"], "in_scope")
+
+    def test_rag_workflow_stops_before_retrieval_for_out_of_scope(self):
+        class FakeConfig:
+            api_key = ""
+            model = "fake"
+            def mode(self, requested="auto"):
+                return "offline"
+
+        class ShouldNotRunRetriever:
+            def search(self, **kwargs):
+                raise AssertionError("retrieval must not run for obvious out-of-scope input")
+
+        result = RAGWorkflow(FakeConfig(), ShouldNotRunRetriever()).run(
+            "帮我写一份杭州旅游攻略",
+            content_type="Blog",
+            mode="offline",
+        )
+        self.assertEqual(result["status"], "out_of_scope")
+        self.assertEqual(result["workflow_trace"][0]["step"], "scope_guard")
+
+    def test_generation_context_excludes_unrequested_hypothetical_case(self):
+        hits = [
+            {
+                "id": "pdf-p019-c01",
+                "text": "面向招商银行的GEO应用设想，如果金融机构建设AI知识基建……",
+                "source": "sample.pdf",
+                "page": 19,
+                "heading": "面向招商银行的GEO应用设想",
+            },
+            {
+                "id": "pdf-p018-c01",
+                "text": "大型集团GEO难点包括信息复杂、口径分散、组织协同难。",
+                "source": "sample.pdf",
+                "page": 18,
+                "heading": "大型集团项目经验",
+            },
+        ]
+        context = build_context(hits, topic="为什么中国出海品牌需要进行 GEO 优化？")
+        self.assertEqual(context["evidence_ids"], ["pdf-p018-c01"])
+        self.assertEqual(context["excluded_evidence"][0]["id"], "pdf-p019-c01")
 
     def test_run_logger_records_complete_payload_and_redacts_secret(self):
         import tempfile
