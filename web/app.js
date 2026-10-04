@@ -76,6 +76,14 @@ function renderIntent(result) {
   root.append(grid);
   const reason = isMeta ? (result.scope?.reason || result.message) : intent.reason;
   if (reason) root.append(node("div", "intent-reason", reason));
+  if (!isMeta && (intent.retrieval_needs || []).length) {
+    const needs = node("div", "intent-needs");
+    needs.append(node("div", "small-title", "Retrieval needs"));
+    const chips = node("div", "query-list");
+    intent.retrieval_needs.forEach(item => chips.append(node("span", "query-chip", item)));
+    needs.append(chips);
+    root.append(needs);
+  }
 }
 
 function renderQueryPlan(result) {
@@ -122,21 +130,23 @@ function renderEvidence(result) {
     return;
   }
 
-  const priorities = [
-    ["core", "CORE · 核心证据"],
-    ["supporting", "SUPPORTING · 辅助证据"],
-    ["low_priority", "LOW PRIORITY · 低优先级"],
-    ["excluded", "EXCLUDED · 当前任务排除"],
-    ["unclassified", "UNCLASSIFIED"],
+  const groups = [
+    ["selected", "SELECTED · 送入 Writer"],
+    ["filtered", "FILTERED · Hard Safety"],
+    ["deduplicated", "DEDUPED · 近重复"],
+    ["budget_dropped", "BUDGET · 超出上下文预算"],
+    ["not_selected", "NOT SELECTED · Final Top-N 之外"],
+    ["unprocessed", "UNPROCESSED"],
   ];
-  const grouped = Object.fromEntries(priorities.map(([key]) => [key, []]));
+  const grouped = Object.fromEntries(groups.map(([key]) => [key, []]));
   hits.forEach(hit => {
-    const key = grouped[hit.evidence_priority] ? hit.evidence_priority : "unclassified";
+    const key = grouped[hit.postprocess_status] ? hit.postprocess_status : "unprocessed";
     grouped[key].push(hit);
   });
 
   function renderHit(hit, index) {
-    const item = node("div", "evidence-item priority-" + (hit.evidence_priority || "unclassified"));
+    const status = hit.postprocess_status || "unprocessed";
+    const item = node("div", "evidence-item status-" + status);
     item.id = "evidence-" + hit.id;
 
     const trigger = node("button", "evidence-trigger");
@@ -149,25 +159,23 @@ function renderEvidence(result) {
     trigger.append(title);
 
     const scoreBox = node("div", "evidence-score");
-    if (hit.evidence_type) {
-      scoreBox.append(node("span", "priority-badge badge-" + (hit.evidence_priority || "unclassified"), (hit.evidence_priority || "unclassified").toUpperCase()));
-      scoreBox.append(node("span", "evidence-type-badge", hit.evidence_type.toUpperCase()));
-    }
+    scoreBox.append(node("span", "priority-badge badge-" + status, status.replaceAll("_", " ").toUpperCase()));
+    if (hit.evidence_type) scoreBox.append(node("span", "evidence-type-badge", hit.evidence_type.toUpperCase()));
     const score = hit.reranker_score ?? hit.score ?? hit.rrf_score;
     if (score !== undefined && score !== null) {
-      scoreBox.append(node("span", "score-line", "score " + Number(score).toFixed(4)));
+      scoreBox.append(node("span", "score-line", "rerank " + Number(score).toFixed(4)));
     }
     trigger.append(scoreBox);
 
     const panel = node("div", "evidence-panel");
-    if (hit.evidence_reason) {
+    if (hit.postprocess_reason) {
       const policy = node("div", "evidence-policy-row");
-      policy.append(node("strong", "", "Policy · "));
-      policy.append(node("span", "", hit.evidence_reason));
+      policy.append(node("strong", "", "Post-process · "));
+      policy.append(node("span", "", hit.postprocess_reason));
       panel.append(policy);
     }
-    if ((hit.matched_signals || []).length) {
-      panel.append(node("div", "matched-signals", "Matched signals · " + hit.matched_signals.join(" / ")));
+    if ((hit.risk_flags || []).length) {
+      panel.append(node("div", "matched-signals", "Risk flags · " + hit.risk_flags.join(" / ")));
     }
     panel.append(node("p", "evidence-text", hit.text || hit.quote || ""));
 
@@ -193,7 +201,7 @@ function renderEvidence(result) {
     return item;
   }
 
-  priorities.forEach(([key, label]) => {
+  groups.forEach(([key, label]) => {
     const group = grouped[key];
     if (!group.length) return;
     const section = node("div", "evidence-group");
@@ -239,49 +247,90 @@ function renderDocument(result) {
     root.append(node("p", "query-note", result.message || "没有生成文档。"));
     return;
   }
-  root.append(node("h1", "", doc.title || result.topic || "Generated Content"));
   const type = result.task_intent?.content_type;
+  root.className = "document-output output-" + (type || "blog");
+  root.append(node("h1", "", doc.title || result.topic || "Generated Content"));
 
   if (type === "faq") {
-    appendClaims(root, doc.intro);
-    (doc.faq || []).forEach(item => {
-      root.append(node("h2", "", item.question));
-      appendClaim(root, item.answer);
+    const intro = node("div", "output-intro");
+    appendClaims(intro, doc.intro);
+    root.append(intro);
+    const list = node("div", "faq-output-list");
+    (doc.faq || []).forEach((item, index) => {
+      const card = node("section", "faq-output-card");
+      const q = node("div", "faq-question");
+      q.append(node("span", "faq-index", "Q" + (index + 1)));
+      q.append(node("h2", "", item.question));
+      card.append(q);
+      const answer = node("div", "faq-answer");
+      appendClaim(answer, item.answer);
+      card.append(answer);
+      list.append(card);
     });
-    root.append(node("h2", "", "结语"));
-    appendClaims(root, doc.conclusion);
+    root.append(list);
+    if ((doc.conclusion || []).length) {
+      const footer = node("div", "output-conclusion");
+      footer.append(node("strong", "", "总结"));
+      appendClaims(footer, doc.conclusion);
+      root.append(footer);
+    }
   } else if (type === "brand_intro") {
-    [["品牌定位", "positioning"], ["核心价值", "value_propositions"]].forEach(([heading, key]) => {
-      root.append(node("h2", "", heading));
-      appendClaims(root, doc[key]);
+    const grid = node("div", "structured-output-grid");
+    [["品牌定位", "positioning"], ["核心价值", "value_propositions"], ["服务对象", "audiences"], ["可信信息", "proof_points"]].forEach(([heading, key]) => {
+      if (!(doc[key] || []).length) return;
+      const card = node("section", "structured-output-card");
+      card.append(node("div", "structured-label", heading));
+      appendClaims(card, doc[key]);
+      grid.append(card);
     });
+    root.append(grid);
     root.append(node("h2", "", "核心能力"));
+    const capabilities = node("div", "capability-grid");
     (doc.capabilities || []).forEach(section => {
-      root.append(node("h3", "", section.heading));
-      appendClaims(root, section.paragraphs);
+      const card = node("section", "capability-card");
+      card.append(node("h3", "", section.heading));
+      appendClaims(card, section.paragraphs);
+      capabilities.append(card);
     });
-    [["服务对象", "audiences"], ["可信信息", "proof_points"]].forEach(([heading, key]) => {
-      if ((doc[key] || []).length) {
-        root.append(node("h2", "", heading));
-        appendClaims(root, doc[key]);
-      }
-    });
+    root.append(capabilities);
   } else if (type === "product_intro") {
-    [["产品定位", "summary"], ["用户问题", "pain_points"]].forEach(([heading, key]) => {
-      root.append(node("h2", "", heading));
-      appendClaims(root, doc[key]);
-    });
+    const hero = node("section", "product-hero");
+    hero.append(node("div", "structured-label", "产品定位"));
+    appendClaims(hero, doc.summary);
+    root.append(hero);
+
+    if ((doc.pain_points || []).length) {
+      root.append(node("h2", "", "解决什么问题"));
+      const pains = node("div", "structured-output-grid");
+      doc.pain_points.forEach(item => {
+        const card = node("section", "structured-output-card");
+        appendClaim(card, item);
+        pains.append(card);
+      });
+      root.append(pains);
+    }
+
     root.append(node("h2", "", "核心能力"));
+    const capabilities = node("div", "capability-grid");
     (doc.capabilities || []).forEach(section => {
-      root.append(node("h3", "", section.heading));
-      appendClaims(root, section.paragraphs);
+      const card = node("section", "capability-card");
+      card.append(node("h3", "", section.heading));
+      appendClaims(card, section.paragraphs);
+      capabilities.append(card);
     });
+    root.append(capabilities);
+
     [["使用场景", "use_cases"], ["适用边界", "boundaries"]].forEach(([heading, key]) => {
+      if (!(doc[key] || []).length) return;
       root.append(node("h2", "", heading));
-      appendClaims(root, doc[key]);
+      const block = node("div", "output-intro");
+      appendClaims(block, doc[key]);
+      root.append(block);
     });
   } else {
-    appendClaims(root, doc.lead);
+    const lead = node("div", "blog-lead");
+    appendClaims(lead, doc.lead);
+    root.append(lead);
     (doc.sections || []).forEach(section => {
       root.append(node("h2", "", section.heading));
       appendClaims(root, section.paragraphs);
@@ -289,8 +338,10 @@ function renderDocument(result) {
     if ((doc.faq || []).length) {
       root.append(node("h2", "", "FAQ"));
       doc.faq.forEach(item => {
-        root.append(node("h3", "", item.question));
-        appendClaim(root, item.answer);
+        const card = node("section", "faq-output-card compact-faq");
+        card.append(node("h3", "", item.question));
+        appendClaim(card, item.answer);
+        root.append(card);
       });
     }
     root.append(node("h2", "", "结语"));
