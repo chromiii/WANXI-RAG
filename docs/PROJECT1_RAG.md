@@ -9,6 +9,11 @@
 ```text
 User Input
   ↓
+Scope Guard
+  ├─ meta -> direct system response
+  ├─ out_of_scope -> stop
+  └─ in_scope / ambiguous -> continue
+  ↓
 Task Intent Parser
   ├─ explicit type -> direct route
   ├─ clear wording -> rule route
@@ -25,6 +30,12 @@ Hybrid Retrieval
 Weighted RRF
   ↓
 Local Cross-Encoder Reranker
+  ↓
+Query-conditioned Evidence Policy
+  ├─ CORE
+  ├─ SUPPORTING
+  ├─ LOW_PRIORITY
+  └─ EXCLUDED
   ↓
 Context Builder
   ↓
@@ -56,19 +67,34 @@ Task Intent 和 Retrieval Intent 分开：
 
 原始 query 权重 1.0，rewrite query 权重 0.7。每个 query 分别执行 BM25 与 BGE-M3 dense retrieval，再由 weighted RRF 合并。Cross-encoder 最终始终使用原始 query 对候选文档重新评分，避免 query rewrite 偏离用户真正意图。
 
-## 5. Context Construction
+## 5. Query-conditioned Evidence Selection
 
-只把最终 Top-K evidence 加入 generation context，并保留：
+Reranker 只回答“哪个 chunk 与 query 更相关”，但高相关不代表适合直接进入生成上下文。系统因此在 reranking 后增加 deterministic Evidence Policy，不额外调用 LLM。
+
+每个候选 evidence 同时得到两个维度：
+
+- `priority`：`CORE / SUPPORTING / LOW_PRIORITY / EXCLUDED`
+- `evidence_type`：`FACTUAL / MARKETING_CLAIM / HYPOTHETICAL / CASE / METRIC / MEDIA / PROFILE`
+
+Priority 是 query-conditioned 的，不绑定固定页码。同一条“应用设想”在普通品牌问题中可能是 `EXCLUDED`，当用户明确询问该设想时可以成为 `CORE`，但其 `evidence_type=HYPOTHETICAL` 始终保留，供 Prompt 与 Grounding 做风险控制。
+
+Policy 综合当前 topic、Query Planner intent、reranker rank/score、证据类型与直接语义信号，目的是区分“检索相关”和“生成有用”。Writer 默认只接收 `CORE + SUPPORTING`；`LOW_PRIORITY / EXCLUDED` 继续保留在 retrieval hits、日志和 Debug Studio 中，便于审计。
+
+## 6. Context Construction
+
+Context Builder 按 Evidence Policy 的优先级组装生成上下文，只写入允许进入 Writer 的 evidence，并保留：
 
 - stable chunk id
 - physical PDF page
 - heading
 - text
 - page image asset path
+- evidence priority
+- evidence type
 
-Writer 被明确要求只使用真正支持当前主题的 evidence，不要求覆盖全部 Top-K。
+如果检索到了候选资料但 Policy 找不到可安全进入生成的证据，Workflow 返回 `insufficient_evidence`，不会强行生成。
 
-## 6. Type-specific Generation
+## 7. Type-specific Generation
 
 Blog、FAQ、品牌介绍、产品介绍具有不同 JSON schema 与 Prompt：
 
@@ -77,7 +103,7 @@ Blog、FAQ、品牌介绍、产品介绍具有不同 JSON schema 与 Prompt：
 - 品牌介绍：定位、核心价值、能力、服务对象、可信信息。
 - 产品介绍：产品定位、用户问题、能力、使用场景、适用边界。
 
-## 7. Grounding
+## 8. Grounding
 
 生成后的 JSON 必须再次通过 deterministic validator：
 
@@ -89,14 +115,16 @@ Blog、FAQ、品牌介绍、产品介绍具有不同 JSON schema 与 Prompt：
 
 如果模型 JSON 不符合 schema / grounding，LLM client 会进行一次 bounded repair；再次失败则返回错误，不静默放行。
 
-## 8. Observable Workflow
+## 9. Observable Workflow
 
 最终结果含 `workflow_trace`，仅记录可观察执行阶段，不包含模型隐藏推理：
 
 ```text
+scope_guard
 task_intent
 query_planning
 hybrid_retrieval
+evidence_selection
 context_building
 generation
 grounding_validation
@@ -104,7 +132,7 @@ grounding_validation
 
 同时 `model_calls` 记录每次外部模型调用的 purpose、tokens 与 latency，便于 Demo 展示和调试。
 
-## 9. Example commands
+## 10. Example commands
 
 自动识别内容类型：
 
@@ -127,7 +155,7 @@ py -m trendee.cli rag-search "万悉科技主要帮助客户解决什么问题�
 py -m trendee.cli hybrid-search "万悉科技主要帮助客户解决什么问题？" --no-rerank
 ```
 
-## 10. Known limitations
+## 11. Known limitations
 
 - 当前 PDF 主要依赖文本层；文本稀疏页只做标记，尚未全量 OCR。
 - Cross-encoder reranker 是本地轻量模型，复杂抽象问题排序并不保证完美。
