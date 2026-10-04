@@ -57,10 +57,12 @@ Markdown + PDF references + workflow trace
 
 ## 3. Task Intent
 
-Task Intent 和 Retrieval Intent 分开：
+Task Intent 将“语义目标”和“呈现形式”分开：
 
-- Task Intent 回答“用户要生成什么内容”，决定 Writer schema。
-- Query Planner 回答“为了完成这个任务应该检索什么”，只扩展召回，不改变最终用户意图。
+- Primary Objective：用户原始 topic，是最高优先级，回答“用户真正想知道什么”；
+- Presentation Contract：Blog / FAQ / 品牌介绍 / 产品介绍，只决定输出结构；
+- Semantic Focus：从原始 topic 提取 customer_pain_points / geo_value / product_capabilities 等检索焦点；
+- Query Planner：先围绕 Primary Objective 找直接证据，再按 Presentation Contract 做必要补充，不得反向改写用户问题。
 
 若用户显式指定 `--type FAQ`，不会额外调用意图模型；若使用 `--type auto`，先用规则识别，只有 live 模式下的模糊输入才调用 DeepSeek。
 
@@ -70,9 +72,9 @@ Task Intent 和 Retrieval Intent 分开：
 
 ## 5. Intent-aware Retrieval and Reranking
 
-Task Intent 不只决定 Writer schema，也会生成 `retrieval_needs`。Query Planner 接收用户原问题、内容类型和 retrieval needs：
+Task Intent 会分别生成 `primary_retrieval_needs` 与 `format_retrieval_needs`。Query Planner 接收用户原问题、semantic focus、内容类型和两类 needs，其中 primary needs 优先级始终更高：
 
-- FAQ：优先检索可以直接回答用户问题的证据；
+- FAQ：第一目标是直接回答用户原问题；若 topic 本身是问句，第一条 FAQ 必须保留该问题；
 - 品牌介绍：覆盖品牌定位、核心价值、能力、服务对象和可信信息；
 - 产品介绍：覆盖产品定位、用户问题、产品能力、使用场景和边界；
 - Blog：围绕主题补充背景、原因、业务事实和相关能力。
