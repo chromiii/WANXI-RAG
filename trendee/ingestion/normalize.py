@@ -249,9 +249,24 @@ def normalize_staging(
 
         chunks = _merge_blocks(kept, target_chars, max_chars)
         heading = next(
-            (str(block.get("heading", "")).strip() for block in kept if str(block.get("heading", "")).strip()),
-            f"PDF 第{page}页",
+            (
+                str(block.get("heading", "")).strip()
+                for block in kept
+                if str(block.get("heading", "")).strip()
+                and _boilerplate_key(str(block.get("heading", ""))) not in boilerplate
+            ),
+            "",
         )
+        if not heading and kept:
+            heading = next(
+                (
+                    line.strip()
+                    for line in str(kept[0].get("content", "")).splitlines()
+                    if line.strip()
+                ),
+                f"PDF 第{page}页",
+            )
+        heading = heading or f"PDF 第{page}页"
         source = kept[0]
         for number, (content, source_ids, boxes) in enumerate(chunks, 1):
             normalized.append({
