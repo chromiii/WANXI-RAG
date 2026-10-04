@@ -20,8 +20,8 @@ Project 1 正式写作入口已统一为 `RAGWorkflow`：
 
 ```text
 Scope Guard
-  -> Task Intent
-  -> Query Planner
+  -> LLM Task Intent Classifier
+  -> Query Transformation Planner
   -> BM25 + BGE-M3
   -> weighted RRF
   -> task-aware cross-encoder reranker
@@ -32,7 +32,7 @@ Scope Guard
   -> Grounding Validator
 ```
 
-``--type auto` 会先识别呈现类型；显式传入 `Blog / FAQ / 品牌介绍 / 产品介绍` 时直接路由，不额外消耗一次模型调用。无论类型来自 auto 还是显式选择，用户原始 topic 始终是 Primary Objective，内容类型只决定 Presentation Contract，不会替换语义目标。完整设计见 `docs/PROJECT1_RAG.md`。
+`--type auto` 在 live 模式下由 LLM Intent Classifier 判断呈现类型、semantic focus 与 user goal；显式传入 `Blog / FAQ / 品牌介绍 / 产品介绍` 时，呈现类型作为不可覆盖的 Presentation Contract，LLM 只分析语义目标。Query Planner 再独立选择 passthrough / rewrite / expand / decompose，不使用业务关键词或具体客户名做 Intent 分类。完整设计见 `docs/PROJECT1_RAG.md`。
 
 ```powershell
 py -m trendee.cli write "为什么中国出海品牌需要进行 GEO 优化？" --mode live
@@ -56,8 +56,8 @@ http://127.0.0.1:8000
 
 页面用于 Project 1 调试，重点展示：
 
-- Task Intent 分类及识别来源；
-- Query Planner 的 original query / rewrite queries；
+- LLM Intent 的 presentation type / semantic focus / user goal / confidence；
+- Query Planner 的 strategy、original query 与额外 retrieval queries；
 - 可观察 Workflow Trace；
 - Post-Retrieval 状态（SELECTED / FILTERED / DEDUPED / BUDGET / NOT SELECTED）；
 - evidence type / risk flags、chunk 文本、RRF / reranker / channel 分数；
