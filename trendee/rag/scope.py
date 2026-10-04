@@ -5,6 +5,12 @@ import re
 from typing import Any, Sequence
 
 
+META_PATTERNS = [
+    ("greeting", re.compile(r"^(你好|您好|嗨|hi|hello|hey)[！!。,.， ]*$", re.I)),
+    ("identity", re.compile(r"你是谁|你是什么|自我介绍|介绍一下你自己|who are you", re.I)),
+    ("capabilities", re.compile(r"你能做什么|你会什么|能干什么|支持什么|有哪些功能|怎么用|如何使用|help|usage", re.I)),
+]
+
 IN_SCOPE = re.compile(
     r"万悉|Trendee|GEO|生成式引擎优化|AI.{0,8}(搜索|问答|引用|推荐|可见性|品牌)|"
     r"(品牌|官网|内容|产品|出海|营销|知识资产).{0,12}(AI|GEO|搜索|问答|引用|可见性)|"
@@ -23,6 +29,14 @@ OUT_OF_SCOPE = re.compile(
 
 def precheck_scope(topic: str) -> dict[str, Any]:
     text = topic.strip()
+    for meta_intent, pattern in META_PATTERNS:
+        if pattern.search(text):
+            return {
+                "scope": "meta",
+                "meta_intent": meta_intent,
+                "source": "rule",
+                "reason": "识别为系统问候/身份/能力说明类交互，无需进入知识库检索。",
+            }
     if IN_SCOPE.search(text):
         return {
             "scope": "in_scope",
