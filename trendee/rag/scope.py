@@ -8,7 +8,10 @@ from typing import Any, Sequence
 META_PATTERNS = [
     ("greeting", re.compile(r"^(你好|您好|嗨|hi|hello|hey)[！!。,.， ]*$", re.I)),
     ("identity", re.compile(r"你是谁|你是什么|自我介绍|介绍一下你自己|who are you", re.I)),
-    ("capabilities", re.compile(r"你能做什么|你会什么|能干什么|支持什么|有哪些功能|怎么用|如何使用|help|usage", re.I)),
+    ("capabilities", re.compile(
+        r"^(你能做什么|你会什么|你能干什么|你支持什么|请介绍你的功能|怎么使用你|如何使用你|help|usage)[？?！!。,.， ]*$",
+        re.I,
+    )),
 ]
 
 IN_SCOPE = re.compile(
