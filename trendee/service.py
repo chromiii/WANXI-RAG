@@ -10,11 +10,15 @@ from .documents import prepare_brand, now_utc
 from .grounding import validate_grounding, reference_list, used_citations, unknown_fact_request, injection_request
 from .llm import Client
 from .retrieval import Index, pdf_chunks, website_chunks, context_from_hits
+from .search.pipeline import HybridRetriever
+from .search.query_planner import passthrough_plan, validate_query_plan
 
 
-def prompt(name):
-    return (ROOT / "prompts/common.md").read_text(encoding="utf-8") + "\n\n" + \
-           (ROOT / f"prompts/{name}.md").read_text(encoding="utf-8")
+def prompt(name, include_common=True):
+    specific = (ROOT / f"prompts/{name}.md").read_text(encoding="utf-8")
+    if not include_common:
+        return specific
+    return (ROOT / "prompts/common.md").read_text(encoding="utf-8") + "\n\n" + specific
 
 
 def claim(text, hit):
@@ -76,21 +80,21 @@ class Workbench:
                 data_dir = ROOT / data_dir
         self.pages, self.brand_manifest = prepare_brand(data_dir)
         snapshot_path = data_dir / "website_snapshot.json"
-        if not snapshot_path.exists():
-            raise FileNotFoundError(
-                f"Missing {snapshot_path}. Run 'python -m trendee.cli prepare --refresh-site' in an authorized runtime."
-            )
-        self.snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        self.snapshot = json.loads(snapshot_path.read_text(encoding="utf-8")) if snapshot_path.exists() else None
         self.pdf_index = Index(pdf_chunks(self.pages))
-        self.site_index = Index(website_chunks(self.snapshot))
+        self.site_index = Index(website_chunks(self.snapshot)) if self.snapshot else None
+        self._rag_retriever = None
 
     def info(self):
-        return {"version": "1.0.0", "api_configured": bool(self.config.api_key), "model": self.config.model,
+        return {"version": "1.1.0", "api_configured": bool(self.config.api_key), "model": self.config.model,
                 "default_mode": self.config.mode(), "pdf_pages": len(self.pages),
-                "pdf_chunks": len(self.pdf_index.chunks), "website_pages": self.snapshot["page_count"],
-                "website_chunks": len(self.site_index.chunks), "website_captured_at_utc": self.snapshot["captured_at_utc"],
-                "website_urls": [p["url"] for p in self.snapshot["pages"]],
-                "retrieval": "BM25 + character TF-IDF + RRF (lexical, no dense embeddings)",
+                "pdf_chunks": len(self.pdf_index.chunks),
+                "website_pages": self.snapshot["page_count"] if self.snapshot else 0,
+                "website_chunks": len(self.site_index.chunks) if self.site_index else 0,
+                "website_captured_at_utc": self.snapshot["captured_at_utc"] if self.snapshot else None,
+                "website_urls": [p["url"] for p in self.snapshot["pages"]] if self.snapshot else [],
+                "retrieval": "Elasticsearch BM25 + BGE-M3 dense kNN + weighted multi-query RRF + local cross-encoder reranker",
+                "query_planner": "DeepSeek in live mode; original-query passthrough offline",
                 "agents": [{**asdict(s), "dependencies": list(s.dependencies)} for s in REGISTRY.values()]}
 
     @staticmethod
@@ -98,6 +102,67 @@ class Workbench:
         if not isinstance(question, str) or not question.strip() or len(question) > 2000:
             raise ValueError("请输入 1-2000 字符的问题。")
         return question.strip()
+
+    def _get_pdf_retriever(self):
+        if self._rag_retriever is None:
+            self._rag_retriever = HybridRetriever(
+                elasticsearch_url=self.config.elasticsearch_url,
+                index_name=self.config.elasticsearch_index,
+            )
+        return self._rag_retriever
+
+    @staticmethod
+    def _adapt_pdf_hit(hit):
+        """Adapt Elasticsearch evidence to the existing grounding/citation contract."""
+        return {
+            "id": hit["chunk_id"],
+            "text": hit.get("content", ""),
+            "source": hit.get("source_name", "trendee_brand.pdf"),
+            "page": hit.get("page"),
+            "url": None,
+            "heading": hit.get("heading", ""),
+            "captured_at_utc": hit.get("created_at"),
+            "asset_path": hit.get("asset_path"),
+            "score": hit.get("reranker_score", hit.get("rrf_score")),
+            "pre_rerank_rank": hit.get("pre_rerank_rank"),
+            "reranker_score": hit.get("reranker_score"),
+            "reranker_score_raw": hit.get("reranker_score_raw"),
+            "rrf_score": hit.get("rrf_score"),
+            "retrieval_channels": hit.get("retrieval_channels", {}),
+            "query_variants": hit.get("query_variants", []),
+            "rank": hit.get("rank"),
+        }
+
+    def plan_pdf_query(self, query, active_mode, client):
+        if active_mode != "live":
+            return passthrough_plan(query)
+        raw = client.json(
+            prompt("query_planner", include_common=False),
+            json.dumps({"query": query}, ensure_ascii=False),
+            lambda value: validate_query_plan(value, query),
+            purpose="query_planner",
+        )
+        return validate_query_plan(raw, query)
+
+    def search_pdf(self, query, mode="auto", top_k=6, client=None):
+        query = self.check_input(query)
+        active_mode = self.config.mode(mode)
+        client = client or Client(self.config)
+        plan = self.plan_pdf_query(query, active_mode, client)
+        raw_hits = self._get_pdf_retriever().search(
+            original_query=query,
+            retrieval_queries=plan["retrieval_queries"],
+            top_k=top_k,
+            rerank=True,
+        )
+        return {
+            "status": "ok" if raw_hits else "insufficient_evidence",
+            "mode": active_mode,
+            "query": query,
+            "query_plan": plan,
+            "hits": [self._adapt_pdf_hit(hit) for hit in raw_hits],
+            "model_calls": client.calls,
+        }
 
     def write(self, topic, audience="中国出海品牌的市场与运营团队", content_type="Blog", mode="auto", top_k=6):
         topic = self.check_input(topic)
@@ -108,17 +173,25 @@ class Workbench:
         if injection_request(topic):
             return {"status": "rejected", "mode": active_mode, "message": "不能伪造公司事实、数据或引用。请提供基于资料的写作任务。"}
         started = time.perf_counter()
-        hits = self.pdf_index.search(topic, top_k=top_k)
+        client = Client(self.config)
+        retrieval = self.search_pdf(topic, mode=active_mode, top_k=top_k, client=client)
+        hits = retrieval["hits"]
         missing = unknown_fact_request(topic, hits)
         if not hits or missing:
             return {"status": "insufficient_evidence", "mode": active_mode,
                     "message": "资料未提供：" + "、".join(missing) if missing else "检索不到足够相关的 PDF 依据。",
-                    "retrieval_hits": hits, "references": reference_list(hits), "model_calls": []}
-        client = Client(self.config)
+                    "query_plan": retrieval["query_plan"],
+                    "retrieval_hits": hits, "references": reference_list(hits), "model_calls": client.calls}
         if active_mode == "live":
             request = json.dumps({"topic": topic, "audience": audience, "content_type": content_type,
+                                  "query_plan": retrieval["query_plan"],
                                   "evidence": context_from_hits(hits)}, ensure_ascii=False)
-            article = client.json(prompt("writer"), request, lambda x: validate_article(x, hits))
+            article = client.json(
+                prompt("writer"),
+                request,
+                lambda x: validate_article(x, hits),
+                purpose="writer",
+            )
         else:
             chosen = hits[:4]
             lead = claim("品宣资料围绕本主题提供了以下信息。下面的草稿由检索片段组织而成，尚未调用大模型进行改写。", chosen[0])
@@ -132,6 +205,7 @@ class Workbench:
         return {"status": "ok", "project": "rag_writer", "mode": active_mode,
                 "model": self.config.model if active_mode == "live" else None,
                 "topic": topic, "audience": audience, "content_type": content_type,
+                "query_plan": retrieval["query_plan"],
                 "article": article, "markdown": article_markdown(article, refs), "references": refs,
                 "retrieval_hits": hits, "validation": validation, "model_calls": client.calls,
                 "duration_ms": round((time.perf_counter()-started)*1000), "created_at_utc": now_utc()}
@@ -147,7 +221,8 @@ class Workbench:
                 raise ValueError("LLM Router 需要真实模型模式；离线模式请选择规则路由。")
             client = client or Client(self.config)
             decision = client.json(prompt("router"), json.dumps({"question": question,
-                                   "previous_questions": (history or [])[-3:]}, ensure_ascii=False), validate_route)
+                                   "previous_questions": (history or [])[-3:]}, ensure_ascii=False), validate_route,
+                                   purpose="router")
             decision["router"] = "llm"
         else:
             decision = rule_route(question)
@@ -283,7 +358,7 @@ class Workbench:
             if active_mode == "live":
                 user = json.dumps({"question": question, "previous_question": previous, "upstream_results": dependencies,
                                    "evidence": context_from_hits(hits)}, ensure_ascii=False)
-                value = client.json(prompt(name), user, lambda x: validate_agent(name, x, hits))
+                value = client.json(prompt(name), user, lambda x: validate_agent(name, x, hits), purpose="agent:" + name)
             else:
                 value = self.offline_agent(name, hits, state, question + " " + previous)
             validation = validate_agent(name, value, hits)
