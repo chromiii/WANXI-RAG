@@ -337,3 +337,18 @@ python -m trendee.cli index-init
 核心 RAG、Grounding、LLM 边界、Agent Router 与 CLI 已进入仓库。当前清理后的 GitHub 基线刻意不携带任何真实知识库数据，因此完整万悉 Demo 需要在运行环境注入私有 PDF / 官网快照后执行。
 
 详细开发约定见 `docs/DEVELOPMENT.md`。
+
+
+## Project 1 tests
+
+Project 1 regression and acceptance testing are documented in `docs/PROJECT1_TESTING.md`.
+
+Windows quick commands:
+
+```powershell
+py -m unittest discover -s tests -p "test_project1_*.py" -v
+py scripts/eval_project1.py --mode offline
+py scripts/eval_project1.py --mode live
+```
+
+The live evaluator checks intent routing, hallucination guards, citation closure, source visuals, output schemas and runtime PDF artifact integrity.
