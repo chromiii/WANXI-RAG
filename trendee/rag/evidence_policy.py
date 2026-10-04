@@ -148,8 +148,12 @@ def evaluate_evidence(
             priority = "supporting"
             reason_parts.append("与当前意图相关，可作为补充证据")
         elif evidence_type == "marketing_claim":
-            priority = "supporting" if focus in {"brand_positioning", "compliance"} else "low_priority"
-            reason_parts.append("营销主张只能作为受限补充证据")
+            priority = (
+                "supporting"
+                if focus in {"brand_positioning", "compliance"} or score >= 0.45
+                else "low_priority"
+            )
+            reason_parts.append("营销主张不能作为独立事实；仅在主题相关度足够时作为补充证据")
         elif rank <= 2 or score >= 0.45:
             priority = "supporting"
             reason_parts.append("语义相关度较高，但不是当前意图的直接证据")
