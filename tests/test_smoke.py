@@ -12,7 +12,7 @@ from trendee.retrieval import Chunk, Index, pdf_chunks, split_page
 from trendee.search.elasticsearch_store import EMBEDDING_DIMS, evidence_index_body, rrf_fuse
 from trendee.search.embeddings import embedding_text
 from trendee.search.query_planner import passthrough_plan, validate_query_plan
-from trendee.rag.intent import canonical_content_type, parse_task_intent, retrieval_seed_queries
+from trendee.rag.intent import canonical_content_type, parse_task_intent
 from trendee.rag.generation import validate_document, render_markdown
 from trendee.rag.workflow import RAGWorkflow, source_visuals
 from trendee.rag.scope import precheck_scope
@@ -98,6 +98,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
     def test_query_plan_always_preserves_original_query(self):
         plan = validate_query_plan(
             {
+                "strategy": "expand",
                 "rewrite_needed": True,
                 "intent": "customer_pain_points",
                 "retrieval_queries": [
@@ -132,7 +133,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertEqual(intent["content_type"], "faq")
         self.assertEqual(intent["source"], "explicit")
 
-    def test_task_intent_rule_detects_blog(self):
+    def test_task_intent_offline_auto_is_deterministic_fallback(self):
         intent = parse_task_intent(
             topic="为什么中国出海品牌需要进行 GEO 优化？",
             audience="市场团队",
@@ -140,14 +141,15 @@ class CodeOnlySmokeTests(unittest.TestCase):
             active_mode="offline",
         )
         self.assertEqual(intent["content_type"], "blog")
-        self.assertEqual(intent["source"], "rule")
+        self.assertEqual(intent["semantic_focus"], "generic")
+        self.assertEqual(intent["source"], "offline_default")
 
     def test_content_type_aliases(self):
         self.assertEqual(canonical_content_type("品牌介绍"), "brand_intro")
         self.assertEqual(canonical_content_type("产品介绍"), "product_intro")
         self.assertEqual(canonical_content_type("auto"), "auto")
 
-    def test_product_intent_has_schema_retrieval_needs(self):
+    def test_explicit_product_type_is_presentation_contract(self):
         intent = parse_task_intent(
             topic="万悉科技主要帮助客户解决什么问题？",
             audience="市场团队",
@@ -155,22 +157,9 @@ class CodeOnlySmokeTests(unittest.TestCase):
             active_mode="offline",
         )
         self.assertEqual(intent["content_type"], "product_intro")
-        self.assertIn("与原问题相关的产品能力", intent["format_retrieval_needs"])
-        seeds = retrieval_seed_queries("product_intro", intent["semantic_focus"])
-        self.assertTrue(any("产品能力" in query for query in seeds))
-        self.assertTrue(any("客户痛点" in query or "解决问题" in query for query in seeds))
-
-    def test_explicit_product_format_preserves_primary_question_focus(self):
-        intent = parse_task_intent(
-            topic="万悉科技主要帮助客户解决什么问题？",
-            audience="市场团队",
-            requested_type="产品介绍",
-            active_mode="offline",
-        )
-        self.assertEqual(intent["content_type"], "product_intro")
-        self.assertEqual(intent["semantic_focus"], "customer_pain_points")
         self.assertEqual(intent["primary_question"], "万悉科技主要帮助客户解决什么问题？")
-        self.assertIn("客户面临的具体问题、痛点或业务挑战", intent["primary_retrieval_needs"])
+        self.assertEqual(intent["semantic_focus"], "generic")
+        self.assertEqual(intent["presentation_source"], "explicit")
 
     def test_faq_first_question_must_preserve_original_question(self):
         hits = [{"id": "pdf-p001-c01", "text": "万悉科技提升品牌在AI问答中的可见性。", "source": "x", "page": 1}]
