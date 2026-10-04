@@ -4,7 +4,37 @@ from __future__ import annotations
 import re
 from typing import Any, Sequence
 
-from ..grounding import validate_grounding
+from ..grounding import claims, validate_grounding
+
+
+
+
+FORBIDDEN_SOURCE_META_PHRASES = (
+    "资料显示",
+    "资料中列出",
+    "资料中提到",
+    "资料提到",
+    "资料指出",
+    "根据资料",
+    "品宣资料自述",
+    "资料自述",
+)
+
+
+def _validate_publishable_style(value: dict[str, Any]) -> None:
+    """Keep source-provenance language out of publishable body claims.
+
+    Limitations are intentionally excluded because they are expected to state
+    what the source material does not provide.
+    """
+    errors: list[str] = []
+    for claim in claims(value):
+        text = str(claim.get("text", ""))
+        bad = [phrase for phrase in FORBIDDEN_SOURCE_META_PHRASES if phrase in text]
+        if bad:
+            errors.append("publishable claim contains source-meta wording: " + ", ".join(bad))
+    if errors:
+        raise ValueError("; ".join(errors[:5]))
 
 
 def _claim(text: str, hit: dict[str, Any]) -> dict[str, Any]:
@@ -74,8 +104,8 @@ def validate_document(
     if content_type == "blog":
         _require_claim_list(value, "lead")
         _validate_sections(value)
-        _validate_faq(value, 0, 5)
         _require_claim_list(value, "conclusion")
+        _validate_faq(value, 3, 3)
     elif content_type == "faq":
         _require_claim_list(value, "intro")
         _validate_faq(value, 1, 6)
@@ -94,14 +124,17 @@ def validate_document(
         _validate_sections(value, "capabilities", 6)
         _require_claim_list(value, "audiences")
         _require_claim_list(value, "proof_points", non_empty=False)
+        _validate_faq(value, 3, 3)
     elif content_type == "product_intro":
         _require_claim_list(value, "summary")
         _require_claim_list(value, "pain_points", non_empty=False)
         _validate_sections(value, "capabilities", 6)
         _require_claim_list(value, "use_cases", non_empty=False)
         _require_claim_list(value, "boundaries", non_empty=False)
+        _validate_faq(value, 3, 3)
     else:
         raise ValueError("Unsupported content type")
+    _validate_publishable_style(value)
     return validate_grounding(value, list(hits))
 
 
@@ -114,34 +147,49 @@ def offline_document(content_type: str, topic: str, hits: Sequence[dict[str, Any
 
     if content_type == "faq":
         faq = [
-            {"question": topic, "answer": _claim("品宣资料自述：" + first["text"], first)}
+            {"question": topic, "answer": _claim(first["text"], first)}
         ]
         for h in chosen[1:4]:
             faq.append({
                 "question": h.get("heading") or "补充问题",
-                "answer": _claim("品宣资料自述：" + h["text"], h),
+                "answer": _claim(h["text"], h),
             })
         return {"title": topic, "intro": [_claim("以下回答仅依据已检索的万悉品宣资料。", first)],
                 "faq": faq, "conclusion": [_claim("以上回答均可回查对应 PDF 页。", first)],
                 "limitations": limitations}
     if content_type == "brand_intro":
-        return {"title": topic, "positioning": [_claim("品宣资料自述：" + first["text"], first)],
-                "value_propositions": [_claim("品宣资料自述：" + h["text"], h) for h in chosen[1:3] or [first]],
-                "capabilities": [{"heading": h.get("heading") or "能力", "paragraphs": [_claim("品宣资料自述：" + h["text"], h)]} for h in chosen[:3]],
-                "audiences": [_claim("服务对象需以资料表述为准：" + chosen[-1]["text"], chosen[-1])],
-                "proof_points": [], "limitations": limitations}
+        return {"title": topic, "positioning": [_claim(first["text"], first)],
+                "value_propositions": [_claim(h["text"], h) for h in chosen[1:3] or [first]],
+                "capabilities": [{"heading": h.get("heading") or "能力", "paragraphs": [_claim(h["text"], h)]} for h in chosen[:3]],
+                "audiences": [_claim(chosen[-1]["text"], chosen[-1])],
+                "proof_points": [],
+                "faq": [
+                    {"question": "品牌主要解决什么问题？", "answer": _claim(chosen[0]["text"], chosen[0])},
+                    {"question": "品牌具备哪些核心能力？", "answer": _claim(chosen[min(1, len(chosen)-1)]["text"], chosen[min(1, len(chosen)-1)])},
+                    {"question": "品牌适合哪些组织关注？", "answer": _claim(chosen[-1]["text"], chosen[-1])},
+                ],
+                "limitations": limitations}
     if content_type == "product_intro":
-        return {"title": topic, "summary": [_claim("品宣资料自述：" + first["text"], first)],
-                "pain_points": [_claim("相关客户问题可从资料中归纳：" + h["text"], h) for h in chosen[:2]],
-                "capabilities": [{"heading": h.get("heading") or "能力", "paragraphs": [_claim("品宣资料自述：" + h["text"], h)]} for h in chosen[:3]],
-                "use_cases": [_claim("应用场景以资料为准：" + chosen[-1]["text"], chosen[-1])],
-                "boundaries": [_claim("当前说明只覆盖已检索资料，不对未提供的效果作承诺。", first)],
+        return {"title": topic, "summary": [_claim(first["text"], first)],
+                "pain_points": [_claim(h["text"], h) for h in chosen[:2]],
+                "capabilities": [{"heading": h.get("heading") or "能力", "paragraphs": [_claim(h["text"], h)]} for h in chosen[:3]],
+                "use_cases": [_claim(chosen[-1]["text"], chosen[-1])],
+                "boundaries": [],
+                "faq": [
+                    {"question": "产品主要解决什么问题？", "answer": _claim(chosen[0]["text"], chosen[0])},
+                    {"question": "产品有哪些核心能力？", "answer": _claim(chosen[min(1, len(chosen)-1)]["text"], chosen[min(1, len(chosen)-1)])},
+                    {"question": "产品适合哪些使用场景？", "answer": _claim(chosen[-1]["text"], chosen[-1])},
+                ],
                 "limitations": limitations}
 
     return {"title": topic,
             "lead": [_claim("以下文章草稿仅依据已检索的万悉品宣资料。", first)],
-            "sections": [{"heading": h.get("heading") or "资料要点", "paragraphs": [_claim("品宣资料自述：" + h["text"], h)]} for h in chosen],
-            "faq": [], "conclusion": [_claim("上述内容均可回查原始 PDF。", first)],
+            "sections": [{"heading": h.get("heading") or "资料要点", "paragraphs": [_claim(h["text"], h)]} for h in chosen],
+            "faq": [
+                {"question": "这一主题最核心的问题是什么？", "answer": _claim(chosen[0]["text"], chosen[0])},
+                {"question": "企业可以从哪些能力入手？", "answer": _claim(chosen[min(1, len(chosen)-1)]["text"], chosen[min(1, len(chosen)-1)])},
+                {"question": "实施时还需要关注什么？", "answer": _claim(chosen[-1]["text"], chosen[-1])},
+            ], "conclusion": [_claim("以上要点均可回查对应 PDF 页面。", first)],
             "limitations": limitations}
 
 
@@ -181,6 +229,9 @@ def render_markdown(content_type: str, value: dict[str, Any], refs: Sequence[dic
         for section in value["capabilities"]:
             lines.extend(["### " + section["heading"], ""])
             lines.extend(paragraph(x) + "\n" for x in section["paragraphs"])
+        lines.extend(["## 延展 FAQ", ""])
+        for item in value["faq"]:
+            lines.extend(["### " + item["question"], "", paragraph(item["answer"]), ""])
     else:
         for heading, key in [
             ("产品定位", "summary"), ("用户问题", "pain_points"),
@@ -192,6 +243,9 @@ def render_markdown(content_type: str, value: dict[str, Any], refs: Sequence[dic
         for section in value["capabilities"]:
             lines.extend(["### " + section["heading"], ""])
             lines.extend(paragraph(x) + "\n" for x in section["paragraphs"])
+        lines.extend(["## 延展 FAQ", ""])
+        for item in value["faq"]:
+            lines.extend(["### " + item["question"], "", paragraph(item["answer"]), ""])
 
     if value.get("limitations"):
         lines.extend(["## 资料与限制", "", *["- " + str(x) for x in value["limitations"]]])
