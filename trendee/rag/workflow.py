@@ -18,6 +18,7 @@ from ..search.query_planner import passthrough_plan, validate_query_plan
 from .context import build_context
 from .generation import offline_document, render_markdown, validate_document
 from .intent import parse_task_intent
+from .scope import precheck_scope, evidence_scope_check
 
 
 WRITER_PROMPTS = {
@@ -107,6 +108,27 @@ class RAGWorkflow:
         client = Client(self.config)
         trace: list[dict[str, Any]] = []
 
+        scope = precheck_scope(topic)
+        trace.append({
+            "step": "scope_guard",
+            "status": scope["scope"],
+            "source": scope["source"],
+            "reason": scope["reason"],
+        })
+        if scope["scope"] == "out_of_scope":
+            return {
+                "status": "out_of_scope",
+                "project": "rag_writer",
+                "mode": active_mode,
+                "topic": topic,
+                "message": "该问题与万悉品牌/GEO内容生成任务无关，请输入与万悉、GEO、AI搜索可见性、品牌内容或产品能力相关的写作主题。",
+                "scope": scope,
+                "workflow_trace": trace,
+                "model_calls": client.calls,
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+                "created_at_utc": now_utc(),
+            }
+
         intent = parse_task_intent(
             topic=topic,
             audience=audience,
@@ -146,6 +168,34 @@ class RAGWorkflow:
             "retrieved": len(hits),
         })
 
+        if scope["scope"] == "ambiguous":
+            verified_scope = evidence_scope_check(topic, hits)
+            trace.append({
+                "step": "scope_verification",
+                "status": verified_scope["scope"],
+                "source": verified_scope["source"],
+                "reason": verified_scope["reason"],
+                "best_score": verified_scope.get("best_score"),
+            })
+            scope = verified_scope
+            if scope["scope"] == "out_of_scope":
+                return {
+                    "status": "out_of_scope",
+                    "project": "rag_writer",
+                    "mode": active_mode,
+                    "topic": topic,
+                    "task_intent": intent,
+                    "query_plan": query_plan,
+                    "message": "检索不到足以支持该主题的万悉品宣资料，因此停止生成，避免用无关证据硬写。",
+                    "scope": scope,
+                    "retrieval_hits": hits,
+                    "references": reference_list(hits),
+                    "workflow_trace": trace,
+                    "model_calls": client.calls,
+                    "duration_ms": round((time.perf_counter() - started) * 1000),
+                    "created_at_utc": now_utc(),
+                }
+
         missing = unknown_fact_request(topic, hits)
         if not hits or missing:
             trace.append({
@@ -169,13 +219,16 @@ class RAGWorkflow:
                 "created_at_utc": now_utc(),
             }
 
-        context = build_context(hits)
+        context = build_context(hits, topic=topic)
+        generation_ids = set(context["evidence_ids"])
+        generation_hits = [hit for hit in hits if hit["id"] in generation_ids]
         trace.append({
             "step": "context_building",
             "status": "ok",
             "evidence_count": context["evidence_count"],
             "context_chars": context["context_chars"],
             "evidence_ids": context["evidence_ids"],
+            "excluded_evidence": context["excluded_evidence"],
         })
 
         if active_mode == "live":
@@ -191,11 +244,11 @@ class RAGWorkflow:
             document = client.json(
                 _prompt(writer_name),
                 request,
-                lambda value: validate_document(intent["content_type"], value, hits),
+                lambda value: validate_document(intent["content_type"], value, generation_hits),
                 purpose="writer:" + intent["content_type"],
             )
         else:
-            document = offline_document(intent["content_type"], topic, hits)
+            document = offline_document(intent["content_type"], topic, generation_hits)
 
         trace.append({
             "step": "generation",
@@ -204,7 +257,7 @@ class RAGWorkflow:
             "writer": intent["content_type"],
         })
 
-        validation = validate_document(intent["content_type"], document, hits)
+        validation = validate_document(intent["content_type"], document, generation_hits)
         used_ids = used_citations(document)
         refs = reference_list(hits, used_ids)
         trace.append({
@@ -225,6 +278,7 @@ class RAGWorkflow:
             "topic": topic,
             "audience": audience,
             "content_type": intent["content_type_label"],
+            "scope": scope,
             "task_intent": intent,
             "query_plan": query_plan,
             "document": document,
@@ -236,6 +290,7 @@ class RAGWorkflow:
                 "evidence_ids": context["evidence_ids"],
                 "evidence_count": context["evidence_count"],
                 "context_chars": context["context_chars"],
+                "excluded_evidence": context["excluded_evidence"],
             },
             "validation": validation,
             "workflow_trace": trace,
