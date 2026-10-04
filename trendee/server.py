@@ -255,13 +255,17 @@ def make_handler(workbench, logger=None, data_dir=None):
 def serve(host="127.0.0.1", port=8000):
     private_dir = runtime_data_dir()
     logger = RunLogger(private_dir)
+    workbench = Workbench(data_dir=private_dir)
     server = ThreadingHTTPServer(
         (host, port),
-        make_handler(Workbench(data_dir=private_dir), logger=logger, data_dir=private_dir),
+        make_handler(workbench, logger=logger, data_dir=private_dir),
     )
     print(f"Trendee Evidence Studio: http://{host}:{port}", flush=True)
     print(f"RAG run log: {logger.path}", flush=True)
-    print("Offline mode runs without a key. Configure .env and restart for live DeepSeek generation.", flush=True)
+    if workbench.config.api_key:
+        print(f"LLM: LIVE ready ({workbench.config.model})", flush=True)
+    else:
+        print("LLM: OFFLINE only (DEEPSEEK_API_KEY is not configured)", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
