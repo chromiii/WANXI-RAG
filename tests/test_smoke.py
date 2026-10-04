@@ -112,7 +112,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
             )
             lines = logger.path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 1)
-            self.assertIn('"run_id": "smoke"', lines[0])
+            self.assertIn('"run_id":"smoke"', lines[0])
 
 
 if __name__ == "__main__":
