@@ -7,12 +7,34 @@
 Project 1：读取万悉品宣 PDF，完成页码可追溯的 RAG 写作流程：
 
 ```text
-PDF -> page-preserving parse -> chunk -> retrieval -> context -> LLM -> grounding -> cited output
+PDF -> page-preserving parse -> chunk -> task intent -> query plan -> hybrid retrieval -> rerank -> context -> type-specific LLM writer -> grounding -> cited output
 ```
 
 当前主检索链为 Elasticsearch BM25 + BGE-M3 dense kNN + RRF；可选本地 cross-encoder reranker 做最终精排。早期的 BM25 + character TF-IDF 实现保留为轻量 baseline / fallback，不作为最终主链。
 
 Project 2：基于官网信息实现 Agent Router、依赖调度和多 Agent 协作，包括官网信息分析、GEO 诊断、客户问题生成和内容策略。
+
+## Intent-driven writing workflow
+
+Project 1 正式写作入口已统一为 `RAGWorkflow`：
+
+```text
+Task Intent
+  -> Query Planner
+  -> BM25 + BGE-M3
+  -> weighted RRF
+  -> cross-encoder reranker
+  -> Context Builder
+  -> Blog / FAQ / Brand / Product Writer
+  -> Grounding Validator
+```
+
+`--type auto` 会先识别写作类型；显式传入 `Blog / FAQ / 品牌介绍 / 产品介绍` 时直接路由，不额外消耗一次模型调用。完整设计见 `docs/PROJECT1_RAG.md`。
+
+```powershell
+py -m trendee.cli write "为什么中国出海品牌需要进行 GEO 优化？" --mode live
+py -m trendee.cli write "万悉科技主要帮助客户解决什么问题？" --mode live --type FAQ
+```
 
 ## 数据安全边界
 
@@ -88,7 +110,8 @@ trendee/
   grounding.py    # citation / numeric / hallucination guards
   llm.py          # DeepSeek-compatible LLM boundary
   agents.py       # Agent registry, router and dependencies
-  service.py      # RAG / multi-agent orchestration
+  rag/            # Project 1 intent / context / generation / workflow
+  service.py      # application facade + Project 2 orchestration
   cli.py          # CLI
 prompts/          # 完整 Prompt
 tests/            # 不依赖私有数据的 CI 测试
