@@ -7,10 +7,10 @@
 Project 1：读取万悉品宣 PDF，完成页码可追溯的 RAG 写作流程：
 
 ```text
-PDF -> page-preserving parse -> chunk -> scope guard -> task intent -> intent-aware query plan -> hybrid retrieval -> task-aware rerank -> post-retrieval processing -> context -> type-specific LLM writer -> grounding -> cited output
+PDF -> PyMuPDF page-preserving ingest -> normalize -> hybrid retrieval -> rerank -> evidence sufficiency -> post-retrieval processing -> context -> type-specific LLM writer -> grounding -> cited output
 ```
 
-当前主检索链为 Elasticsearch BM25 + BGE-M3 dense kNN + RRF；可选本地 cross-encoder reranker 做最终精排。早期的 BM25 + character TF-IDF 实现保留为轻量 baseline / fallback，不作为最终主链。
+Project 1 只有一条正式 PDF 检索链：Elasticsearch BM25 + BGE-M3 dense kNN + weighted RRF + 本地 cross-encoder reranker。仓库中的 character TF-IDF `Index` 仅服务 Project 2 的官网快照检索，不再作为 PDF fallback。
 
 Project 2：基于官网信息实现 Agent Router、依赖调度和多 Agent 协作，包括官网信息分析、GEO 诊断、客户问题生成和内容策略。
 
@@ -25,6 +25,7 @@ Scope Guard
   -> BM25 + BGE-M3
   -> weighted RRF
   -> task-aware cross-encoder reranker
+  -> Evidence Sufficiency Gate
   -> Post-Retrieval Processor
      (hard filter / dedup / final Top-N / context budget)
   -> Context Builder
@@ -152,8 +153,9 @@ LLM_MODEL=deepseek-v4-flash
 
 ```text
 trendee/
-  documents.py    # PDF / 官网数据读取与抓取
-  retrieval.py    # chunk + lexical hybrid retrieval
+  documents.py    # 官网快照抓取与共享文本工具
+  retrieval.py    # Project 2 官网快照 lexical retrieval
+  search/          # Project 1 Elasticsearch / embedding / RRF / reranker
   grounding.py    # citation / numeric / hallucination guards
   llm.py          # DeepSeek-compatible LLM boundary
   agents.py       # Agent registry, router and dependencies
@@ -199,7 +201,7 @@ data/private/
 
 `evidence_staging.jsonl` 当前包含 `text` 和 `page_image` 两类 evidence。对 PPT/宣传册式 PDF，默认将整页渲染结果作为视觉资产，因为页面通常由文本、矢量图形和小图标共同组成；单独抽取 PDF 内嵌 raster image 往往只得到 logo/icon 等碎片。
 
-`page_image` 目前使用页标题与整页文本作为可检索代理文本，完整页面 PNG 用于后续引用预览和视觉证据展示。OCR、embedding、Elasticsearch bulk indexing 属于后续阶段；内嵌图片抽取默认关闭。
+`page_image` 目前使用页标题与整页文本作为可检索代理文本，完整页面 PNG 用于后续引用预览和视觉证据展示。OCR 仍是文本稀疏页的可选增强；embedding 与 Elasticsearch bulk indexing 由后续的 `index-build` 步骤完成。内嵌图片抽取默认关闭。
 
 可先检查 `ingestion_manifest.json` 中的页数、文本 evidence 数和 `page_image_evidence_count`，再继续建立向量索引。
 
@@ -292,7 +294,7 @@ query
                  ↓
            Python RRF fusion
                  ↓
-        optional cross-encoder
+        cross-encoder
                  ↓
               Top-K
 ```
@@ -330,7 +332,7 @@ python -m trendee.cli index-init
 - `asset_path`：仅保存本地私有图片路径，不保存图片本体。
 - `metadata`：扩展字段。
 
-此阶段只建立基础设施和 schema，不向 Elasticsearch 写入万悉 PDF、图片、解析缓存或 embedding。
+`index-init` 只创建 schema；`index-build` 才会把规范化文本和本地生成的 embedding 写入 Elasticsearch。PDF 原文件和页面 PNG 仍保留在私有运行目录，不写入 Git。
 
 ## 当前状态
 
@@ -352,3 +354,14 @@ py scripts/eval_project1.py --mode live
 ```
 
 The live evaluator checks intent routing, hallucination guards, citation closure, source visuals, output schemas and runtime PDF artifact integrity.
+
+
+## Demo case catalog
+
+Project 1 的验收、CLI demo 和 Web 快速案例统一读取：
+
+```text
+eval/project1_cases.json
+```
+
+因此同一个 case 不再分别硬编码在 CLI、HTML 和评测脚本中。
