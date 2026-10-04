@@ -52,6 +52,7 @@ def rrf_fuse(
     top_k: int = 6,
     rank_constant: int = 60,
     labels: Sequence[str] | None = None,
+    weights: Sequence[float] | None = None,
 ) -> list[dict[str, Any]]:
     """Fuse ranked hit lists by chunk_id with transparent per-channel metadata."""
     scores: dict[str, float] = {}
@@ -60,16 +61,22 @@ def rrf_fuse(
 
     if labels is not None and len(labels) != len(channels):
         raise ValueError("labels must match the number of RRF channels")
+    if weights is not None and len(weights) != len(channels):
+        raise ValueError("weights must match the number of RRF channels")
 
     for channel_number, hits in enumerate(channels, 1):
         label = labels[channel_number - 1] if labels else f"channel_{channel_number}"
+        weight = float(weights[channel_number - 1]) if weights else 1.0
+        if weight <= 0:
+            raise ValueError("RRF weights must be positive")
         for rank, hit in enumerate(hits, 1):
             chunk_id = str(hit["chunk_id"])
-            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (rank_constant + rank)
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (rank_constant + rank)
             payloads.setdefault(chunk_id, hit)
             channel_meta.setdefault(chunk_id, {})[label] = {
                 "rank": rank,
                 "score": round(float(hit.get("score") or 0.0), 6),
+                "weight": weight,
             }
 
     ordered = sorted(scores, key=lambda cid: (-scores[cid], cid))
