@@ -15,6 +15,7 @@ from trendee.search.query_planner import passthrough_plan, validate_query_plan
 from trendee.rag.intent import canonical_content_type, parse_task_intent
 from trendee.rag.generation import validate_document, render_markdown
 from trendee.rag.workflow import RAGWorkflow
+from trendee.runlog import RunLogger
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
 
@@ -213,6 +214,33 @@ class CodeOnlySmokeTests(unittest.TestCase):
             ],
         )
         self.assertTrue(result["validation"]["citation_ids_valid"])
+
+    def test_run_logger_records_complete_payload_and_redacts_secret(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            logger = RunLogger(directory)
+            run_id = logger.new_run_id()
+            logger.record(
+                run_id,
+                "/api/write",
+                {"topic": "test", "api_key": "should-not-leak"},
+                result={"status": "ok", "document": {"title": "完整结果"}},
+                http_status=200,
+                duration_ms=123,
+            )
+            recent = logger.recent(1)
+            self.assertEqual(len(recent), 1)
+            self.assertEqual(recent[0]["run_id"], run_id)
+            self.assertEqual(recent[0]["request"]["topic"], "test")
+            self.assertEqual(recent[0]["request"]["api_key"], "[REDACTED]")
+            self.assertEqual(recent[0]["result"]["document"]["title"], "完整结果")
+            self.assertTrue((Path(directory) / "logs" / "rag_runs.jsonl").exists())
+
+    def test_web_debug_studio_assets_exist(self):
+        from trendee.config import ROOT
+        for relative in ["web/index.html", "web/app.js", "web/styles.css"]:
+            self.assertTrue((ROOT / relative).exists(), relative)
 
     def test_embedding_text_combines_heading_and_content(self):
         value = embedding_text({"heading": "GEO 原生网站", "content": "结构化内容与 AI 引用"})
