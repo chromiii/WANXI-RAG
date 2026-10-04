@@ -89,7 +89,7 @@ def semantic_focus(topic: str) -> str:
 
 def _rule_intent(topic: str) -> str | None:
     text = topic.strip()
-    if re.search(r"\bFAQ\b|常见问题|问答|答疑|问题清单|问题列表", text, re.I):
+    if re.search(r"FAQ|常见问题|问答|答疑|问题清单|问题列表", text, re.I):
         return "faq"
     if re.search(r"品牌介绍|公司介绍|企业介绍|万悉科技.{0,8}(是谁|做什么|简介)", text, re.I):
         return "brand_intro"
