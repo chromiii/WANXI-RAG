@@ -7,7 +7,7 @@ import time
 from .agents import REGISTRY, rule_route, validate_route, execution_plan, validate_agent
 from .config import ROOT, Config, runtime_data_dir
 from .documents import prepare_brand, now_utc
-from .grounding import validate_grounding, reference_list, used_citations, unknown_fact_request, injection_request
+from .grounding import reference_list, used_citations, injection_request
 from .llm import Client
 from .retrieval import Index, pdf_chunks, website_chunks, context_from_hits
 from .search.pipeline import HybridRetriever
@@ -262,12 +262,6 @@ class Workbench:
                 if chunk and chunk.id not in existing:
                     hits.append({**asdict(chunk), "score": 0, "retrieval_channel": "validated_prior_result"})
                     existing.add(chunk.id)
-        missing = unknown_fact_request(question, hits)
-        if missing:
-            result = {"status": "insufficient_evidence", "mode": active_mode, "message": "官网资料未提供：" + "、".join(missing),
-                      "route": decision, "called_agents": [], "references": reference_list(hits), "events": events}
-            if on_event: on_event({"type": "result", "result": result})
-            return result
         state, intermediate, validations = {}, [], []
         if previous and prior_result:
             prior_questions = prior_result.get("integrated", {}).get("candidate_questions", [])
