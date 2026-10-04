@@ -67,15 +67,16 @@ class Project1GroundingTests(unittest.TestCase):
         result = validate_grounding(value, self.hits)
         self.assertTrue(result["numeric_guard_passed"])
 
-    def test_hypothetical_bank_scenario_cannot_become_delivered_case(self):
+    def test_grounding_has_no_entity_specific_bank_guard(self):
         value = {
             "answer": {
                 "text": "万悉科技已服务招商银行并帮助其提升 AI 可见性。",
                 "citations": ["pdf-p019-c01"],
             }
         }
-        with self.assertRaisesRegex(ValueError, "招商银行应用设想"):
-            validate_grounding(value, self.hits)
+        result = validate_grounding(value, self.hits)
+        self.assertTrue(result["citation_ids_valid"])
+        self.assertEqual(result["semantic_entailment"], "not independently verified")
 
     def test_hypothetical_bank_scenario_can_stay_hypothetical(self):
         value = {
