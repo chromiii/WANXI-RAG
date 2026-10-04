@@ -70,7 +70,7 @@ def _hypothetical_subject(hit: dict[str, Any]) -> str:
 
 def hard_filter_reason(hit: dict[str, Any], topic: str) -> str | None:
     metadata = evidence_metadata(hit)
-    if "hypothetical" in metadata["risk_flags"]:
+    if metadata["primary_type"] == "hypothetical":
         subject = _hypothetical_subject(hit)
         explicitly_requested = (
             "设想" in topic
