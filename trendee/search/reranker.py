@@ -74,8 +74,11 @@ class LocalReranker:
         raw_scores: list[float] = []
         for start in range(0, len(pairs), self.settings.batch_size):
             batch = pairs[start : start + self.settings.batch_size]
+            queries = [query for query, _ in batch]
+            passages = [passage for _, passage in batch]
             encoded = self.tokenizer(
-                [[query, passage] for query, passage in batch],
+                queries,
+                passages,
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
