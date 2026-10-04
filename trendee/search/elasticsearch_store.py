@@ -51,26 +51,37 @@ def rrf_fuse(
     channels: Sequence[Sequence[dict[str, Any]]],
     top_k: int = 6,
     rank_constant: int = 60,
+    labels: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Fuse ranked hit lists by chunk_id using deterministic reciprocal rank fusion."""
+    """Fuse ranked hit lists by chunk_id with transparent per-channel metadata."""
     scores: dict[str, float] = {}
     payloads: dict[str, dict[str, Any]] = {}
-    channel_ranks: dict[str, dict[str, int]] = {}
+    channel_meta: dict[str, dict[str, dict[str, float | int]]] = {}
+
+    if labels is not None and len(labels) != len(channels):
+        raise ValueError("labels must match the number of RRF channels")
 
     for channel_number, hits in enumerate(channels, 1):
-        label = f"channel_{channel_number}"
+        label = labels[channel_number - 1] if labels else f"channel_{channel_number}"
         for rank, hit in enumerate(hits, 1):
             chunk_id = str(hit["chunk_id"])
             scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (rank_constant + rank)
             payloads.setdefault(chunk_id, hit)
-            channel_ranks.setdefault(chunk_id, {})[label] = rank
+            channel_meta.setdefault(chunk_id, {})[label] = {
+                "rank": rank,
+                "score": round(float(hit.get("score") or 0.0), 6),
+            }
 
     ordered = sorted(scores, key=lambda cid: (-scores[cid], cid))
     result: list[dict[str, Any]] = []
-    for chunk_id in ordered[: max(1, top_k)]:
+    for rank, chunk_id in enumerate(ordered[: max(1, top_k)], 1):
         item = dict(payloads[chunk_id])
+        # The raw ES _score is channel-specific and should not be mistaken for
+        # the final fused score.
+        item.pop("score", None)
+        item["pre_rerank_rank"] = rank
         item["rrf_score"] = round(scores[chunk_id], 8)
-        item["rrf_ranks"] = channel_ranks[chunk_id]
+        item["retrieval_channels"] = channel_meta[chunk_id]
         result.append(item)
     return result
 
@@ -249,4 +260,8 @@ class ElasticsearchEvidenceStore:
     ) -> list[dict[str, Any]]:
         lexical = self.bm25_search(query, candidate_k)
         dense = self.knn_search(query_vector, candidate_k)
-        return rrf_fuse([lexical, dense], top_k=top_k)
+        return rrf_fuse(
+            [lexical, dense],
+            top_k=top_k,
+            labels=["bm25", "dense"],
+        )
