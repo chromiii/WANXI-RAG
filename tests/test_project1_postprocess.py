@@ -59,7 +59,7 @@ class Project1PostRetrievalTests(unittest.TestCase):
         self.assertEqual(result["selected_ids"], ["p19"])
         self.assertEqual(result["selected"][0]["evidence_type"], "hypothetical")
 
-    def test_product_intro_filters_media_and_backfills(self):
+    def test_postprocessor_does_not_override_reranker_by_content_type(self):
         hits = [
             {
                 "id": "media",
@@ -86,15 +86,11 @@ class Project1PostRetrievalTests(unittest.TestCase):
         result = process_retrieved_hits(
             hits,
             topic="介绍 Trendee 的产品能力",
-            content_type="product_intro",
             top_n=2,
         )
-        self.assertEqual(result["selected_ids"], ["product", "case"])
+        self.assertEqual(result["selected_ids"], ["media", "product"])
         by_id = {item["id"]: item for item in result["all_hits"]}
-        self.assertEqual(
-            by_id["media"]["postprocess_reason"],
-            "media_not_admissible_for_product_intro",
-        )
+        self.assertEqual(by_id["media"]["postprocess_status"], "selected")
 
     def test_incidental_media_word_does_not_change_primary_type(self):
         hit = {
