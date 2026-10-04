@@ -36,6 +36,48 @@ py -m trendee.cli write "为什么中国出海品牌需要进行 GEO 优化？" 
 py -m trendee.cli write "万悉科技主要帮助客户解决什么问题？" --mode live --type FAQ
 ```
 
+## Local RAG Debug Studio
+
+启动本地测试页面：
+
+```powershell
+git pull origin main
+py -m trendee.cli serve
+```
+
+浏览器打开：
+
+```text
+http://127.0.0.1:8000
+```
+
+页面用于 Project 1 调试，重点展示：
+
+- Task Intent 分类及识别来源；
+- Query Planner 的 original query / rewrite queries；
+- 可观察 Workflow Trace；
+- Top-K evidence 线索按钮、chunk 文本、RRF / reranker / channel 分数；
+- 对应 PDF 整页 PNG 证据；
+- 四类 Writer 的结构化生成结果；
+- citation 反向定位到 evidence；
+- Grounding 校验结果；
+- DeepSeek 各阶段 token usage / latency；
+- 本次完整 JSON。
+
+每次 `/api/write` 和 PDF `/api/search` 请求都会获得一个 `run_id`，完整 request / result 会追加写入：
+
+```text
+WANXI_DATA_DIR/logs/rag_runs.jsonl
+```
+
+若 `WANXI_DATA_DIR` 留空，则默认是：
+
+```text
+data/private/logs/rag_runs.jsonl
+```
+
+日志属于本地 runtime data，已被 Git 忽略。Credential-shaped 字段会被脱敏，API Key 不进入日志。页面右上角“最近日志”可直接查看最近 20 条完整运行记录。
+
 ## 数据安全边界
 
 Git 中只保存：
@@ -111,7 +153,9 @@ trendee/
   llm.py          # DeepSeek-compatible LLM boundary
   agents.py       # Agent registry, router and dependencies
   rag/            # Project 1 intent / context / generation / workflow
-  service.py      # application facade + Project 2 orchestration
+  runlog.py        # local JSONL RAG audit log
+  service.py       # application facade + Project 2 orchestration
+web/               # local RAG Debug Studio UI
   cli.py          # CLI
 prompts/          # 完整 Prompt
 tests/            # 不依赖私有数据的 CI 测试
