@@ -46,6 +46,32 @@ async function loadInfo() {
   }
 }
 
+async function loadQuickCases() {
+  const root = $("#quick-case-list");
+  if (!root) return;
+  clear(root);
+  root.append(node("span", "query-note", "加载案例中…"));
+  try {
+    const data = await jsonFetch("/api/cases");
+    clear(root);
+    (data.cases || []).forEach(item => {
+      const button = node("button", "case-button", item.label || item.id);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        $("#topic").value = item.topic || "";
+        $("#content-type").value = item.content_type || "auto";
+      });
+      root.append(button);
+    });
+    if (!root.children.length) {
+      root.append(node("span", "query-note", "没有可用案例。"));
+    }
+  } catch (error) {
+    clear(root);
+    root.append(node("span", "query-note", "案例加载失败"));
+  }
+}
+
 function pill(text, good = false) {
   const p = node("span", "pill" + (good ? " validation-good" : ""), text);
   return p;
@@ -538,14 +564,9 @@ async function loadLogs() {
 
 $("#rag-form").addEventListener("submit", runWorkflow);
 $("#top-k").addEventListener("input", event => $("#top-k-value").textContent = event.target.value);
-document.querySelectorAll(".case-button").forEach(button => {
-  button.addEventListener("click", () => {
-    $("#topic").value = button.dataset.topic;
-    $("#content-type").value = button.dataset.type;
-  });
-});
 $("#refresh-logs").addEventListener("click", openLogs);
 $("#close-logs").addEventListener("click", closeLogs);
 $("#drawer-backdrop").addEventListener("click", closeLogs);
 
 loadInfo();
+loadQuickCases();
