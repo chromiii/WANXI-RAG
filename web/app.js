@@ -55,18 +55,27 @@ function renderIntent(result) {
   const root = $("#intent-card");
   clear(root);
   const intent = result.task_intent || {};
+  const isMeta = result.status === "meta" || result.meta_intent;
   const grid = node("div", "intent-grid");
-  [
-    ["分类", intent.content_type_label || intent.content_type || "-"],
-    ["识别来源", intent.source || "-"],
-    ["写作目标", intent.goal || "-"],
-  ].forEach(([label, value]) => {
+  const values = isMeta
+    ? [
+        ["分类", "Meta · " + (result.meta_intent || "system")],
+        ["识别来源", result.scope?.source || "rule"],
+        ["处理方式", "直接响应 · 不进入 RAG"],
+      ]
+    : [
+        ["分类", intent.content_type_label || intent.content_type || "-"],
+        ["识别来源", intent.source || "-"],
+        ["写作目标", intent.goal || "-"],
+      ];
+  values.forEach(([label, value]) => {
     const box = node("div", "metric-box");
     box.append(node("div", "metric-label", label), node("div", "metric-value", value));
     grid.append(box);
   });
   root.append(grid);
-  if (intent.reason) root.append(node("div", "intent-reason", intent.reason));
+  const reason = isMeta ? (result.scope?.reason || result.message) : intent.reason;
+  if (reason) root.append(node("div", "intent-reason", reason));
 }
 
 function renderQueryPlan(result) {
