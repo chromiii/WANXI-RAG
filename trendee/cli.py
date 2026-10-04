@@ -62,6 +62,9 @@ def main():
     hybrid.add_argument("--candidate-k", type=int, default=20)
     hybrid.add_argument("--model", default="BAAI/bge-m3")
     hybrid.add_argument("--device", default="auto")
+    hybrid.add_argument("--rerank", action="store_true", help="Rerank RRF candidates with a local cross-encoder")
+    hybrid.add_argument("--reranker-model", default="BAAI/bge-reranker-base")
+    hybrid.add_argument("--rerank-candidates", type=int, default=12)
     prepare = sub.add_parser("prepare", help="Reparse the supplied PDF; optionally refresh the bounded website snapshot")
     prepare.add_argument("--refresh-site", action="store_true")
     demo = sub.add_parser("demo", help="Run and save reproducible sample cases")
@@ -132,6 +135,9 @@ def main():
                 top_k=args.top_k,
                 candidate_k=args.candidate_k,
                 device=args.device,
+                rerank=args.rerank,
+                reranker_model=args.reranker_model,
+                rerank_candidates=args.rerank_candidates,
             ),
             None,
         )
