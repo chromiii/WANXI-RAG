@@ -17,6 +17,7 @@ from trendee.rag.generation import validate_document, render_markdown
 from trendee.rag.workflow import RAGWorkflow
 from trendee.rag.scope import precheck_scope
 from trendee.rag.context import build_context
+from trendee.rag.evidence_policy import evaluate_evidence, classify_evidence_type
 from trendee.runlog import RunLogger
 from trendee.ingestion.pdf import extract_pdf_evidence
 from trendee.ingestion.normalize import normalize_staging
@@ -211,6 +212,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
                 "task_intent",
                 "query_planning",
                 "hybrid_retrieval",
+                "evidence_selection",
                 "context_building",
                 "generation",
                 "grounding_validation",
@@ -269,6 +271,93 @@ class CodeOnlySmokeTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "out_of_scope")
         self.assertEqual(result["workflow_trace"][0]["step"], "scope_guard")
+
+    def test_evidence_policy_is_query_conditioned(self):
+        hits = [
+            {
+                "id": "pdf-p002-c01",
+                "text": "Trendee提升品牌在AI问答引擎中的可见性，并连接商品与全球用户需求。",
+                "source": "sample.pdf",
+                "page": 2,
+                "heading": "品牌定位",
+                "rank": 2,
+                "reranker_score": 0.47,
+            },
+            {
+                "id": "pdf-p018-c01",
+                "text": "大型集团GEO难点包括信息复杂、口径分散、组织协同难，并需要统一知识资产。",
+                "source": "sample.pdf",
+                "page": 18,
+                "heading": "大型集团项目经验",
+                "rank": 1,
+                "reranker_score": 0.71,
+            },
+            {
+                "id": "pdf-p013-c01",
+                "text": "品宣资料称LLM原生GEO技术为行业合规标杆。",
+                "source": "sample.pdf",
+                "page": 13,
+                "heading": "合规GEO",
+                "rank": 3,
+                "reranker_score": 0.67,
+            },
+            {
+                "id": "pdf-p035-c01",
+                "text": "服务行业包括电商零售、制造、SaaS、金融、教育等。",
+                "source": "sample.pdf",
+                "page": 35,
+                "heading": "服务行业",
+                "rank": 5,
+                "reranker_score": 0.18,
+            },
+            {
+                "id": "pdf-p019-c01",
+                "text": "面向招商银行的GEO应用设想。",
+                "source": "sample.pdf",
+                "page": 19,
+                "heading": "面向招商银行的GEO应用设想",
+                "rank": 4,
+                "reranker_score": 0.30,
+            },
+        ]
+        policy = evaluate_evidence(
+            hits,
+            topic="万悉科技主要帮助客户解决什么问题？",
+            retrieval_intent="customer_pain_points",
+        )
+        by_id = {item["id"]: item for item in policy["decisions"]}
+        self.assertEqual(by_id["pdf-p018-c01"]["priority"], "core")
+        self.assertEqual(by_id["pdf-p002-c01"]["priority"], "core")
+        self.assertEqual(by_id["pdf-p013-c01"]["priority"], "supporting")
+        self.assertEqual(by_id["pdf-p035-c01"]["priority"], "low_priority")
+        self.assertEqual(by_id["pdf-p019-c01"]["priority"], "excluded")
+        self.assertEqual(by_id["pdf-p019-c01"]["evidence_type"], "hypothetical")
+
+    def test_hypothetical_can_be_core_when_explicitly_requested(self):
+        hits = [{
+            "id": "pdf-p019-c01",
+            "text": "面向招商银行的GEO应用设想。",
+            "source": "sample.pdf",
+            "page": 19,
+            "heading": "面向招商银行的GEO应用设想",
+            "rank": 1,
+            "reranker_score": 0.80,
+        }]
+        policy = evaluate_evidence(
+            hits,
+            topic="万悉科技对招商银行有什么GEO应用设想？",
+            retrieval_intent="case",
+        )
+        item = policy["decisions"][0]
+        self.assertEqual(item["priority"], "core")
+        self.assertEqual(item["evidence_type"], "hypothetical")
+
+    def test_evidence_type_marks_marketing_claim(self):
+        hit = {
+            "heading": "合规GEO",
+            "text": "品宣资料称该技术是行业合规标杆。",
+        }
+        self.assertEqual(classify_evidence_type(hit), "marketing_claim")
 
     def test_generation_context_excludes_unrequested_hypothetical_case(self):
         hits = [
