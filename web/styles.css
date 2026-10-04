@@ -198,3 +198,41 @@ input[type="range"] { padding: 0; }
   .evidence-trigger { grid-template-columns: 40px 1fr; }
   .evidence-score { grid-column: 2; text-align: left; }
 }
+
+
+.intent-needs { margin-top: 12px; }
+.badge-selected { background: #edf8f1; color: #16643e; }
+.badge-filtered { background: #fbeeee; color: #9a2f2f; }
+.badge-deduplicated { background: #eef4fb; color: #315f8e; }
+.badge-budget_dropped { background: #fff7e8; color: #8a5a00; }
+.badge-not_selected { background: #f1f2f4; color: #606773; }
+.status-filtered, .status-deduplicated, .status-budget_dropped, .status-not_selected { opacity: .78; }
+
+.output-intro, .blog-lead, .output-conclusion, .product-hero {
+  border: 1px solid var(--line); border-radius: 14px; padding: 15px 17px; background: #fafafa; margin: 12px 0 18px;
+}
+.blog-lead { border-left: 4px solid #252930; background: #fbfbfc; }
+.product-hero { background: #f7f8fa; border-left: 4px solid #252930; }
+.structured-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 800; margin-bottom: 7px; }
+
+.faq-output-list { display: grid; gap: 12px; margin-top: 16px; }
+.faq-output-card { border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: #fff; }
+.faq-question { display: flex; align-items: flex-start; gap: 10px; }
+.faq-question h2 { margin: 1px 0 0; font-size: 16px; }
+.faq-index { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--ink); color: white; font-size: 10px; font-weight: 800; }
+.faq-answer { padding-left: 40px; }
+.compact-faq { margin: 8px 0; }
+
+.structured-output-grid, .capability-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 20px;
+}
+.structured-output-card, .capability-card {
+  border: 1px solid var(--line); border-radius: 14px; padding: 15px; background: #fff;
+}
+.capability-card h3 { margin: 0 0 6px; font-size: 15px; }
+.output-product_intro h2, .output-brand_intro h2 { margin-top: 24px; }
+
+@media (max-width: 760px) {
+  .structured-output-grid, .capability-grid { grid-template-columns: 1fr; }
+  .faq-answer { padding-left: 0; }
+}
