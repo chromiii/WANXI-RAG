@@ -6,10 +6,10 @@ import time
 
 from .agents import REGISTRY, rule_route, validate_route, execution_plan, validate_agent
 from .config import ROOT, Config, runtime_data_dir
-from .documents import prepare_brand, now_utc
+from .documents import now_utc
 from .grounding import reference_list, used_citations, injection_request
 from .llm import Client
-from .retrieval import Index, pdf_chunks, website_chunks, context_from_hits
+from .retrieval import Index, website_chunks, context_from_hits
 from .search.pipeline import HybridRetriever
 from .search.query_planner import passthrough_plan, validate_query_plan
 from .rag.workflow import RAGWorkflow
@@ -37,17 +37,24 @@ class Workbench:
             data_dir = Path(data_dir).expanduser()
             if not data_dir.is_absolute():
                 data_dir = ROOT / data_dir
-        self.pages, self.brand_manifest = prepare_brand(data_dir)
-        snapshot_path = data_dir / "website_snapshot.json"
+        self.data_dir = Path(data_dir)
+        manifest_path = self.data_dir / "normalization_manifest.json"
+        self.pdf_manifest = (
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+            if manifest_path.exists()
+            else {}
+        )
+        snapshot_path = self.data_dir / "website_snapshot.json"
         self.snapshot = json.loads(snapshot_path.read_text(encoding="utf-8")) if snapshot_path.exists() else None
-        self.pdf_index = Index(pdf_chunks(self.pages))
         self.site_index = Index(website_chunks(self.snapshot)) if self.snapshot else None
         self._rag_retriever = None
 
     def info(self):
         return {"version": "1.1.0", "api_configured": bool(self.config.api_key), "model": self.config.model,
-                "default_mode": self.config.mode(), "pdf_pages": len(self.pages),
-                "pdf_chunks": len(self.pdf_index.chunks),
+                "default_mode": self.config.mode(),
+                "pdf_pages": int(self.pdf_manifest.get("page_count") or 0),
+                "pdf_chunks": int(self.pdf_manifest.get("normalized_chunk_count") or 0),
+                "pdf_pipeline": "PyMuPDF ingest -> normalize -> BGE-M3 -> Elasticsearch",
                 "website_pages": self.snapshot["page_count"] if self.snapshot else 0,
                 "website_chunks": len(self.site_index.chunks) if self.site_index else 0,
                 "website_captured_at_utc": self.snapshot["captured_at_utc"] if self.snapshot else None,
