@@ -1,7 +1,7 @@
-"""No model downloads: BM25 + character TF-IDF, fused with reciprocal rank fusion.
+"""Legacy lexical retrieval used only by the bounded website agent pipeline.
 
-This is lexical retrieval, not a claim of dense semantic embeddings. Chunk IDs
-remain stable across runs, and no chunk can cross a physical PDF page.
+Project 1 PDF retrieval uses Elasticsearch BM25 + BGE-M3 dense retrieval,
+weighted RRF and local cross-encoder reranking in trendee.search.
 """
 from collections import Counter
 from dataclasses import dataclass, asdict
@@ -53,17 +53,6 @@ def split_page(text, max_chars=900, overlap=100):
             break
         start = max(start + 1, end - overlap)
     return result
-
-
-def pdf_chunks(pages):
-    output = []
-    for page in pages:
-        if len(page["text"].strip()) < 45:
-            continue
-        for number, text in enumerate(split_page(page["text"]), 1):
-            output.append(Chunk(f"pdf-p{page['page']:03d}-c{number:02d}", text, "trendee_brand.pdf",
-                                page=page["page"], heading=text.splitlines()[0]))
-    return output
 
 
 def website_chunks(snapshot):
