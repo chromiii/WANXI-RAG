@@ -83,7 +83,7 @@ def hard_filter_reason(hit: dict[str, Any], topic: str) -> str | None:
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+|[，。！？；：、,.!?;:\-—_()（）\[\]【】"'“”‘’]", "", text).lower()
+    return re.sub(r"\s+|[，。！？；：、,.!?;:\-—_()（）\[\]【】]", "", text).lower()
 
 
 def _char_ngrams(text: str, n: int = 3) -> set[str]:
