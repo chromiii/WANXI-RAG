@@ -61,12 +61,6 @@ def validate_grounding(value, hits, require_claims=True):
             "note": "ID/数字一致性检查通过；引用存在不等于观点已获独立验证。"}
 
 
-def unknown_fact_request(query, hits):
-    targets = ["营收", "融资金额", "估值", "员工总人数", "年利润", "ARR", "融资额"]
-    requested = [w for w in targets if w.lower() in query.lower()]
-    return [w for w in requested if not any(w.lower() in h["text"].lower() for h in hits)]
-
-
 def injection_request(query):
     return bool(re.search(r"忽略.{0,12}(指令|规则|引用|要求)|伪造|编造.{0,10}(数据|案例|引用)|"
                           r"ignore.{0,20}(instruction|previous|rules)|reveal.{0,10}(key|secret)", query, re.I))
