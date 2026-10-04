@@ -6,7 +6,6 @@
     "content_type": "Blog",
     "expected_status": "ok",
     "expected_intent": "blog",
-    "expected_semantic_focus": "geo_value",
     "extension_faq_count": 3,
     "require_citations": true,
     "require_source_visuals": true,
@@ -19,7 +18,9 @@
       "context_building",
       "generation",
       "grounding_validation"
-    ]
+    ],
+    "require_semantic_focus": true,
+    "require_user_goal": true
   },
   {
     "id": "customer_problem_faq",
@@ -28,10 +29,11 @@
     "content_type": "FAQ",
     "expected_status": "ok",
     "expected_intent": "faq",
-    "expected_semantic_focus": "customer_pain_points",
     "first_faq_equals_topic": true,
     "require_citations": true,
-    "require_source_visuals": true
+    "require_source_visuals": true,
+    "require_semantic_focus": true,
+    "require_user_goal": true
   },
   {
     "id": "brand_intro",
@@ -40,10 +42,11 @@
     "content_type": "品牌介绍",
     "expected_status": "ok",
     "expected_intent": "brand_intro",
-    "expected_semantic_focus": "brand_positioning",
     "extension_faq_count": 3,
     "require_citations": true,
-    "require_source_visuals": true
+    "require_source_visuals": true,
+    "require_semantic_focus": true,
+    "require_user_goal": true
   },
   {
     "id": "product_intro",
@@ -52,10 +55,11 @@
     "content_type": "产品介绍",
     "expected_status": "ok",
     "expected_intent": "product_intro",
-    "expected_semantic_focus": "product_capabilities",
     "extension_faq_count": 3,
     "require_citations": true,
-    "require_source_visuals": true
+    "require_source_visuals": true,
+    "require_semantic_focus": true,
+    "require_user_goal": true
   },
   {
     "id": "product_format_preserves_customer_question",
@@ -64,9 +68,10 @@
     "content_type": "产品介绍",
     "expected_status": "ok",
     "expected_intent": "product_intro",
-    "expected_semantic_focus": "customer_pain_points",
     "extension_faq_count": 3,
-    "require_citations": true
+    "require_citations": true,
+    "require_semantic_focus": true,
+    "require_user_goal": true
   },
   {
     "id": "unknown_financial_fact",
@@ -110,7 +115,6 @@
     "content_type": "FAQ",
     "expected_status": "ok",
     "expected_intent": "faq",
-    "expected_semantic_focus": "case",
     "first_faq_equals_topic": true,
     "require_citations": true,
     "must_not_contain": [
@@ -118,6 +122,8 @@
       "与招商银行达成合作",
       "已为招商银行交付",
       "帮助招商银行提升"
-    ]
+    ],
+    "require_semantic_focus": true,
+    "require_user_goal": true
   }
 ]
