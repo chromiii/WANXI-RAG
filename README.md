@@ -7,7 +7,7 @@
 Project 1：读取万悉品宣 PDF，完成页码可追溯的 RAG 写作流程：
 
 ```text
-PDF -> page-preserving parse -> chunk -> scope guard -> task intent -> query plan -> hybrid retrieval -> rerank -> evidence policy -> context -> type-specific LLM writer -> grounding -> cited output
+PDF -> page-preserving parse -> chunk -> scope guard -> task intent -> intent-aware query plan -> hybrid retrieval -> task-aware rerank -> post-retrieval processing -> context -> type-specific LLM writer -> grounding -> cited output
 ```
 
 当前主检索链为 Elasticsearch BM25 + BGE-M3 dense kNN + RRF；可选本地 cross-encoder reranker 做最终精排。早期的 BM25 + character TF-IDF 实现保留为轻量 baseline / fallback，不作为最终主链。
@@ -24,8 +24,9 @@ Scope Guard
   -> Query Planner
   -> BM25 + BGE-M3
   -> weighted RRF
-  -> cross-encoder reranker
-  -> Query-conditioned Evidence Policy
+  -> task-aware cross-encoder reranker
+  -> Post-Retrieval Processor
+     (hard filter / dedup / final Top-N / context budget)
   -> Context Builder
   -> Blog / FAQ / Brand / Product Writer
   -> Grounding Validator
@@ -58,8 +59,8 @@ http://127.0.0.1:8000
 - Task Intent 分类及识别来源；
 - Query Planner 的 original query / rewrite queries；
 - 可观察 Workflow Trace；
-- Evidence Policy 分组（CORE / SUPPORTING / LOW_PRIORITY / EXCLUDED）、证据类型与判定原因；
-- chunk 文本、RRF / reranker / channel 分数；
+- Post-Retrieval 状态（SELECTED / FILTERED / DEDUPED / BUDGET / NOT SELECTED）；
+- evidence type / risk flags、chunk 文本、RRF / reranker / channel 分数；
 - 对应 PDF 整页 PNG 证据；
 - 四类 Writer 的结构化生成结果；
 - citation 反向定位到 evidence；
@@ -155,7 +156,7 @@ trendee/
   grounding.py    # citation / numeric / hallucination guards
   llm.py          # DeepSeek-compatible LLM boundary
   agents.py       # Agent registry, router and dependencies
-  rag/            # Project 1 scope / intent / evidence policy / context / generation / workflow
+  rag/            # Project 1 scope / intent / postprocess / context / generation / workflow
   runlog.py        # local JSONL RAG audit log
   service.py       # application facade + Project 2 orchestration
 web/               # local RAG Debug Studio UI
