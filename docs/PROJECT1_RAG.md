@@ -31,11 +31,12 @@ Weighted RRF
   ↓
 Local Cross-Encoder Reranker
   ↓
-Query-conditioned Evidence Policy
-  ├─ CORE
-  ├─ SUPPORTING
-  ├─ LOW_PRIORITY
-  └─ EXCLUDED
+Post-Retrieval Processor
+  ├─ evidence metadata / risk flags
+  ├─ hard safety filter
+  ├─ near-duplicate dedup
+  ├─ final Top-N
+  └─ context budget
   ↓
 Context Builder
   ↓
@@ -67,32 +68,46 @@ Task Intent 和 Retrieval Intent 分开：
 
 原始 query 权重 1.0，rewrite query 权重 0.7。每个 query 分别执行 BM25 与 BGE-M3 dense retrieval，再由 weighted RRF 合并。Cross-encoder 最终始终使用原始 query 对候选文档重新评分，避免 query rewrite 偏离用户真正意图。
 
-## 5. Query-conditioned Evidence Selection
+## 5. Intent-aware Retrieval and Reranking
 
-Reranker 只回答“哪个 chunk 与 query 更相关”，但高相关不代表适合直接进入生成上下文。系统因此在 reranking 后增加 deterministic Evidence Policy，不额外调用 LLM。
+Task Intent 不只决定 Writer schema，也会生成 `retrieval_needs`。Query Planner 接收用户原问题、内容类型和 retrieval needs：
 
-每个候选 evidence 同时得到两个维度：
+- FAQ：优先检索可以直接回答用户问题的证据；
+- 品牌介绍：覆盖品牌定位、核心价值、能力、服务对象和可信信息；
+- 产品介绍：覆盖产品定位、用户问题、产品能力、使用场景和边界；
+- Blog：围绕主题补充背景、原因、业务事实和相关能力。
 
-- `priority`：`CORE / SUPPORTING / LOW_PRIORITY / EXCLUDED`
-- `evidence_type`：`FACTUAL / MARKETING_CLAIM / HYPOTHETICAL / CASE / METRIC / MEDIA / PROFILE`
+品牌介绍 / 产品介绍额外加入 deterministic schema-coverage query seeds，避免一个窄问题导致后续结构缺证据。
 
-Priority 是 query-conditioned 的，不绑定固定页码。同一条“应用设想”在普通品牌问题中可能是 `EXCLUDED`，当用户明确询问该设想时可以成为 `CORE`，但其 `evidence_type=HYPOTHETICAL` 始终保留，供 Prompt 与 Grounding 做风险控制。
+Cross-encoder reranking 使用“原始主题 + 最终写作类型 + retrieval needs”的 task-aware rerank query。这样 Query Planner 扩大召回后，最终排序仍与实际写作任务对齐，而不是只对原始一句话做窄排序。
 
-Policy 综合当前 topic、Query Planner intent、reranker rank/score、证据类型与直接语义信号，目的是区分“检索相关”和“生成有用”。Writer 默认只接收 `CORE + SUPPORTING`；`LOW_PRIORITY / EXCLUDED` 继续保留在 retrieval hits、日志和 Debug Studio 中，便于审计。
+## 6. Post-Retrieval Processing and Context Construction
 
-## 6. Context Construction
+Reranker 负责相关性排序；Post-Retrieval Processor 不再二次判断 relevance，也不使用 CORE / SUPPORTING 规则重排。
 
-Context Builder 按 Evidence Policy 的优先级组装生成上下文，只写入允许进入 Writer 的 evidence，并保留：
+Processor 按原 reranker 顺序依次执行：
+
+1. **Evidence metadata / risk flags**：标记 `hypothetical`、`marketing_claim`、`metric_claim`、`media_reference`、`profile_reference` 等，不改变排名；
+2. **Hard safety filter**：例如用户未询问的“应用设想”不进入 Writer；
+3. **Near-duplicate dedup**：使用规范化文本和 character n-gram overlap 去除高度重复 chunk；
+4. **Final Top-N**：从更大的 reranked candidate pool 中按原顺序补位并截取最终证据；
+5. **Context budget**：默认最多约 8000 字符。
+
+Context Builder 只负责将最终 selected evidence 序列化为 Writer 上下文，并保留：
 
 - stable chunk id
 - physical PDF page
 - heading
 - text
-- page image asset path
-- evidence priority
 - evidence type
+- risk flags
 
-如果检索到了候选资料但 Policy 找不到可安全进入生成的证据，Workflow 返回 `insufficient_evidence`，不会强行生成。
+因此系统明确区分：
+
+```text
+Retrieval relevance = Cross-Encoder Reranker
+Generation safety / dedup / budget = Post-Retrieval Processor
+```
 
 ## 7. Type-specific Generation
 
@@ -124,7 +139,7 @@ scope_guard
 task_intent
 query_planning
 hybrid_retrieval
-evidence_selection
+post_retrieval_processing
 context_building
 generation
 grounding_validation
@@ -158,6 +173,6 @@ py -m trendee.cli hybrid-search "万悉科技主要帮助客户解决什么问�
 ## 11. Known limitations
 
 - 当前 PDF 主要依赖文本层；文本稀疏页只做标记，尚未全量 OCR。
-- Cross-encoder reranker 是本地轻量模型，复杂抽象问题排序并不保证完美。
+- Cross-encoder reranker 是本地轻量模型，复杂抽象问题排序并不保证完美；当前通过 intent-aware rerank query 改善写作任务对齐。
 - Grounding validator 验证 citation/数字/已知误用规则，不等价于完整语义蕴含证明。
 - 品宣资料中的营销主张只作为来源事实转述，不视为独立外部核验。
