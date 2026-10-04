@@ -77,7 +77,7 @@ class RAGWorkflow:
         intent: dict[str, Any],
     ) -> dict[str, Any]:
         original = plan["original_query"]
-        seeds = retrieval_seed_queries(intent["content_type"])
+        seeds = retrieval_seed_queries(intent["content_type"], intent.get("semantic_focus", "generic"))
         merged = [original]
         # Structured introductions need schema coverage first; planner rewrites
         # then fill any remaining slots.
@@ -115,7 +115,9 @@ class RAGWorkflow:
                 "content_type": intent["content_type"],
                 "content_type_label": intent["content_type_label"],
                 "goal": intent["goal"],
-                "retrieval_needs": intent.get("retrieval_needs", []),
+                "semantic_focus": intent.get("semantic_focus"),
+                "primary_retrieval_needs": intent.get("primary_retrieval_needs", []),
+                "format_retrieval_needs": intent.get("format_retrieval_needs", []),
             },
         }
         raw = client.json(
@@ -129,11 +131,11 @@ class RAGWorkflow:
 
     @staticmethod
     def _rerank_query(topic: str, intent: dict[str, Any]) -> str:
-        needs = "；".join(intent.get("retrieval_needs", []))
+        primary_needs = "；".join(intent.get("primary_retrieval_needs", []))
         return (
             f"{topic}\n"
-            f"最终写作类型：{intent.get('content_type_label', intent.get('content_type'))}\n"
-            f"需要优先覆盖的证据：{needs}"
+            f"检索重点：{primary_needs}\n"
+            f"呈现形式：{intent.get('content_type_label', intent.get('content_type'))}"
         ).strip()
 
     def run(
@@ -308,6 +310,7 @@ class RAGWorkflow:
         processed = process_retrieved_hits(
             retrieved_hits,
             topic=topic,
+            content_type=intent["content_type"],
             top_n=top_k,
             max_chars=8000,
         )
@@ -370,7 +373,7 @@ class RAGWorkflow:
             document = client.json(
                 _prompt(writer_name),
                 request,
-                lambda value: validate_document(intent["content_type"], value, generation_hits),
+                lambda value: validate_document(intent["content_type"], value, generation_hits, topic=topic),
                 purpose="writer:" + intent["content_type"],
             )
         else:
@@ -383,7 +386,7 @@ class RAGWorkflow:
             "writer": intent["content_type"],
         })
 
-        validation = validate_document(intent["content_type"], document, generation_hits)
+        validation = validate_document(intent["content_type"], document, generation_hits, topic=topic)
         used_ids = used_citations(document)
         refs = reference_list(retrieval_hits, used_ids)
         trace.append({
