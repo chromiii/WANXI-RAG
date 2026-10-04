@@ -78,6 +78,7 @@ def injection_request(query):
 def reference_list(hits, used_ids=None):
     return [{"id": h["id"], "source": h["source"], "page": h.get("page"), "url": h.get("url"),
              "heading": h.get("heading"), "quote": h["text"], "score": h.get("score"),
+             "asset_path": h.get("asset_path"),
              "captured_at_utc": h.get("captured_at_utc")}
             for h in hits if used_ids is None or h["id"] in used_ids]
 
