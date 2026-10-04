@@ -10,12 +10,12 @@ from ..documents import now_utc
 from ..grounding import (
     injection_request,
     reference_list,
-    unknown_fact_request,
     used_citations,
 )
 from ..llm import Client
 from ..search.query_planner import passthrough_plan, validate_query_plan
 from .context import build_context
+from .evidence_gate import assess_evidence_sufficiency
 from .generation import offline_document, render_markdown, validate_document
 from .intent import parse_task_intent
 from .postprocess import process_retrieved_hits
@@ -280,13 +280,23 @@ class RAGWorkflow:
                     "created_at_utc": now_utc(),
                 }
 
-        missing = unknown_fact_request(topic, retrieved_hits)
-        if not retrieved_hits or missing:
-            trace.append({
-                "step": "evidence_gate",
-                "status": "insufficient_evidence",
-                "missing": missing,
-            })
+        sufficiency = assess_evidence_sufficiency(
+            topic=topic,
+            user_goal=str(intent.get("user_goal") or intent.get("goal") or topic),
+            hits=retrieved_hits,
+            active_mode=active_mode,
+            client=client,
+            system_prompt=_prompt("evidence_sufficiency", include_common=False),
+        )
+        trace.append({
+            "step": "evidence_gate",
+            "status": "ok" if sufficiency["answerable"] else "insufficient_evidence",
+            "source": sufficiency["source"],
+            "reason": sufficiency["reason"],
+            "missing_information": sufficiency["missing_information"],
+        })
+        if not sufficiency["answerable"]:
+            missing = sufficiency["missing_information"]
             return {
                 "status": "insufficient_evidence",
                 "project": "rag_writer",
@@ -294,7 +304,11 @@ class RAGWorkflow:
                 "topic": topic,
                 "task_intent": intent,
                 "query_plan": query_plan,
-                "message": "资料未提供：" + "、".join(missing) if missing else "检索不到足够相关的 PDF 依据。",
+                "message": (
+                    "资料不足：" + "、".join(missing)
+                    if missing else "当前检索证据不足以可靠回答该问题。"
+                ),
+                "evidence_sufficiency": sufficiency,
                 "retrieval_hits": retrieved_hits,
                 "references": reference_list(retrieved_hits),
                 "workflow_trace": trace,
@@ -330,7 +344,8 @@ class RAGWorkflow:
                 "query_plan": query_plan,
                 "message": "检索到了候选资料，但在安全过滤、去重和上下文预算处理后没有足够证据进入生成。",
                 "scope": scope,
-                "post_retrieval": {
+                "evidence_sufficiency": sufficiency,
+            "post_retrieval": {
                     "status_counts": processed["status_counts"],
                     "selected_ids": processed["selected_ids"],
                 },
