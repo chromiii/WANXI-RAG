@@ -25,7 +25,8 @@ def main():
     write = sub.add_parser("write", help="Project 1: source-grounded brand writing")
     write.add_argument("topic")
     write.add_argument("--mode", choices=["auto", "live", "offline"], default="auto")
-    write.add_argument("--type", choices=["Blog", "FAQ", "品牌介绍", "产品介绍"], default="Blog")
+    write.add_argument("--type", choices=["auto", "Blog", "FAQ", "品牌介绍", "产品介绍"], default="auto",
+                       help="Explicit content type or auto intent detection")
     write.add_argument("--audience", default="中国出海品牌的市场与运营团队")
     write.add_argument("--top-k", type=int, default=6)
     write.add_argument("--output")
