@@ -257,18 +257,3 @@ class ElasticsearchEvidenceStore:
             source_excludes=["embedding"],
         )
         return [self._hit_payload(hit) for hit in response["hits"]["hits"]]
-
-    def hybrid_search(
-        self,
-        query: str,
-        query_vector: Sequence[float],
-        top_k: int = 6,
-        candidate_k: int = 20,
-    ) -> list[dict[str, Any]]:
-        lexical = self.bm25_search(query, candidate_k)
-        dense = self.knn_search(query_vector, candidate_k)
-        return rrf_fuse(
-            [lexical, dense],
-            top_k=top_k,
-            labels=["bm25", "dense"],
-        )
