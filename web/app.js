@@ -57,6 +57,9 @@ function renderIntent(result) {
   const intent = result.task_intent || {};
   const isMeta = result.status === "meta" || result.meta_intent;
   const grid = node("div", "intent-grid");
+  const confidence = typeof intent.confidence === "number"
+    ? Math.round(intent.confidence * 100) + "%"
+    : "-";
   const values = isMeta
     ? [
         ["分类", "Meta · " + (result.meta_intent || "system")],
@@ -64,9 +67,10 @@ function renderIntent(result) {
         ["处理方式", "直接响应 · 不进入 RAG"],
       ]
     : [
-        ["分类", intent.content_type_label || intent.content_type || "-"],
-        ["识别来源", intent.source || "-"],
-        ["写作目标", intent.goal || "-"],
+        ["呈现类型", intent.content_type_label || intent.content_type || "-"],
+        ["Intent 来源", intent.source || "-"],
+        ["语义焦点", intent.semantic_focus || "-"],
+        ["置信度", confidence],
       ];
   values.forEach(([label, value]) => {
     const box = node("div", "metric-box");
@@ -78,30 +82,14 @@ function renderIntent(result) {
   if (reason) root.append(node("div", "intent-reason", reason));
   if (!isMeta) {
     const objective = node("div", "intent-needs");
-    objective.append(node("div", "small-title", "Primary objective"));
-    objective.append(node("div", "intent-reason", intent.primary_question || result.topic || "-"));
-    if (intent.semantic_focus) {
-      objective.append(node("div", "query-note", "Semantic focus · " + intent.semantic_focus));
-    }
+    objective.append(node("div", "small-title", "User goal"));
+    objective.append(node("div", "intent-reason", intent.user_goal || intent.goal || result.topic || "-"));
+    objective.append(node(
+      "div",
+      "query-note",
+      "Original topic · " + (intent.primary_question || result.topic || "-")
+    ));
     root.append(objective);
-
-    if ((intent.primary_retrieval_needs || []).length) {
-      const primary = node("div", "intent-needs");
-      primary.append(node("div", "small-title", "Primary retrieval needs"));
-      const chips = node("div", "query-list");
-      intent.primary_retrieval_needs.forEach(item => chips.append(node("span", "query-chip original", item)));
-      primary.append(chips);
-      root.append(primary);
-    }
-
-    if ((intent.format_retrieval_needs || []).length) {
-      const support = node("div", "intent-needs");
-      support.append(node("div", "small-title", "Format support"));
-      const chips = node("div", "query-list");
-      intent.format_retrieval_needs.forEach(item => chips.append(node("span", "query-chip", item)));
-      support.append(chips);
-      root.append(support);
-    }
   }
 }
 
@@ -111,10 +99,11 @@ function renderQueryPlan(result) {
   const plan = result.query_plan || {};
   const list = node("div", "query-list");
   (plan.retrieval_queries || []).forEach((query, index) => {
-    list.append(node("div", "query-chip" + (index === 0 ? " original" : ""), (index === 0 ? "Original · " : "Rewrite " + index + " · ") + query));
+    const label = index === 0 ? "Original · " : ((plan.strategy || "rewrite").toUpperCase() + " " + index + " · ");
+    list.append(node("div", "query-chip" + (index === 0 ? " original" : ""), label + query));
   });
   root.append(list);
-  const note = node("div", "query-note", "Intent: " + (plan.intent || "-") + " · Rewrite: " + (plan.rewrite_needed ? "yes" : "no"));
+  const note = node("div", "query-note", "Strategy: " + (plan.strategy || "-") + " · Intent: " + (plan.intent || "-") + " · Extra queries: " + Math.max(0, (plan.retrieval_queries || []).length - 1));
   if (plan.reason) note.textContent += " · " + plan.reason;
   root.append(note);
   if (plan.rerank_query) {
