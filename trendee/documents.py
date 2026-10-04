@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.robotparser import RobotFileParser
 
-from .config import ROOT, runtime_data_dir
+from .config import runtime_data_dir
 
 SITE = "https://www.wanxitech.cn/"
 ALLOWED_HOSTS = {"www.wanxitech.cn", "wanxitech.cn"}
@@ -20,71 +20,10 @@ def now_utc():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
 def normalize_text(text):
     # Retain line boundaries and percentages. Do not silently correct the source's claims.
     return "\n".join(re.sub(r"[ \t\u00a0]+", " ", line).strip()
                      for line in text.replace("\r", "").splitlines() if line.strip())
-
-
-def parse_pdf(path):
-    from pypdf import PdfReader
-    reader = PdfReader(path)
-    if reader.is_encrypted and not reader.decrypt(""):
-        raise ValueError("PDF is encrypted; use an unlocked copy")
-    pages = []
-    for number, page in enumerate(reader.pages, 1):
-        text = normalize_text(page.extract_text() or "")
-        pages.append({"page": number, "text": text,
-                      "extraction_issue": "text_layer_missing_or_sparse" if len(text) < 15 else None})
-    if not any(len(p["text"]) > 30 for p in pages):
-        raise ValueError("PDF has no usable text layer. OCR is required; ingestion was not fabricated.")
-    return pages
-
-
-def prepare_brand(data_dir=None, force=False):
-    data_dir = Path(data_dir) if data_dir is not None else runtime_data_dir()
-    data_dir.mkdir(parents=True, exist_ok=True)
-    path = data_dir / "trendee_brand.pdf"
-    cache = data_dir / "brand_pages.json"
-    manifest_path = data_dir / "brand_manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
-
-    # Source documents and derived caches are private runtime data and are not stored in Git.
-    # When an authorized source PDF is present, its SHA-256 is recorded and the page cache
-    # can be generated beside it for the current runtime only.
-    if not path.exists():
-        if not cache.exists():
-            raise FileNotFoundError(
-                f"Missing {path.name} and {cache.name}; provide the source PDF or a validated cache."
-            )
-        pages = json.loads(cache.read_text(encoding="utf-8"))
-        cached = dict(manifest)
-        cached["source_file_available"] = False
-        cached["runtime_source"] = "validated_page_cache"
-        return pages, cached
-
-    digest = sha256(path)
-    if force or not cache.exists() or manifest.get("sha256") != digest:
-        pages = parse_pdf(path)
-        cache.write_text(json.dumps(pages, ensure_ascii=False, indent=2), encoding="utf-8")
-        manifest = {"file": path.name, "sha256": digest, "page_count": len(pages),
-                    "extracted_at_utc": now_utc(), "parser": "pypdf text layer",
-                    "source": "Employer-provided Feishu attachment",
-                    "page_numbering": "1-based physical PDF pages",
-                    "source_file_available": True,
-                    "runtime_source": "source_pdf",
-                    "limitations": ["No OCR; diagrams and table relations may require original-page review.",
-                                    "Company marketing claims are attributed to the brochure, not independently verified."]}
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    else:
-        manifest = dict(manifest)
-        manifest["source_file_available"] = True
-        manifest["runtime_source"] = "source_pdf"
-    return json.loads(cache.read_text(encoding="utf-8")), manifest
 
 
 class PageParser(HTMLParser):
