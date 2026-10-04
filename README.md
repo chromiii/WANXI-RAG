@@ -10,7 +10,7 @@ Project 1：读取万悉品宣 PDF，完成页码可追溯的 RAG 写作流程�
 PDF -> page-preserving parse -> chunk -> retrieval -> context -> LLM -> grounding -> cited output
 ```
 
-当前检索实现为 BM25 + character TF-IDF + RRF，属于词法混合检索，不宣称使用 dense embedding。后续可在不改变数据边界的前提下增加 embedding / reranker。
+当前主检索链为 Elasticsearch BM25 + BGE-M3 dense kNN + RRF；可选本地 cross-encoder reranker 做最终精排。早期的 BM25 + character TF-IDF 实现保留为轻量 baseline / fallback，不作为最终主链。
 
 Project 2：基于官网信息实现 Agent Router、依赖调度和多 Agent 协作，包括官网信息分析、GEO 诊断、客户问题生成和内容策略。
 
