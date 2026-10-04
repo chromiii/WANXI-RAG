@@ -10,6 +10,22 @@ class ModelError(RuntimeError):
     pass
 
 
+def repair_instruction(error):
+    base = "上次 JSON 未通过校验：" + error + "。"
+    if "招商银行应用设想" in error:
+        return (base + "“面向招商银行的GEO应用设想”不是已交付客户案例。"
+                "删除任何把招商银行描述为客户、合作方、已服务对象或已产生效果的表述；"
+                "如果当前主题并不要求招商银行，直接删除相关段落和 citation。"
+                "不要补造替代案例。仅返回完整 JSON。")
+    if "numbers absent from cited evidence" in error:
+        return base + "删除被引用证据中不存在的数字，或改写为不含该数字的事实表述。仅返回完整 JSON。"
+    if "unknown citations" in error:
+        return base + "所有 citation id 只能使用原上下文 evidence 中已经给出的 id。仅返回完整 JSON。"
+    if "unsupported guarantee" in error:
+        return base + "删除或明确否定任何未经资料支持的推荐率、排名、增长或永久记忆保证。仅返回完整 JSON。"
+    return base + "请严格依据原上下文修正 JSON，删除无依据事实和数据；不要补造资料。仅返回完整 JSON。"
+
+
 class Client:
     def __init__(self, config):
         self.config = config
@@ -22,7 +38,8 @@ class Client:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         last_error = ""
         for repair in range(2):
-            data = self._request(messages, purpose=purpose)
+            call_purpose = purpose if repair == 0 else purpose + ":repair"
+            data = self._request(messages, purpose=call_purpose)
             message = data.get("choices", [{}])[0]
             content = message.get("message", {}).get("content", "")
             try:
@@ -43,8 +60,7 @@ class Client:
                 if repair == 0:
                     messages.extend([
                         {"role": "assistant", "content": content[:24000] if isinstance(content, str) else "{}"},
-                        {"role": "user", "content": "上次 JSON 未通过校验：" + last_error +
-                         "。请严格依据原上下文修正 JSON，删除无依据事实和数据；不要补造资料。仅返回完整 JSON。"},
+                        {"role": "user", "content": repair_instruction(last_error)},
                     ])
         raise ModelError("模型输出两次未通过校验：" + last_error)
 
