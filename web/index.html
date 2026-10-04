@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trendee RAG Debug Studio</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">Project 1 · Evidence-backed Writing</div>
+      <h1>Trendee RAG Debug Studio</h1>
+      <p class="subtitle">看得见意图、检索、证据、生成与校验的本地测试台</p>
+    </div>
+    <div class="status-group">
+      <span id="api-status" class="status-pill">API · 检查中</span>
+      <span id="model-status" class="status-pill">Model · -</span>
+      <button id="refresh-logs" class="ghost-button" type="button">最近日志</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="control-panel card">
+      <div class="section-heading">
+        <span class="step-number">01</span>
+        <div>
+          <h2>测试输入</h2>
+          <p>内容类型可显式指定，也可交给 Task Intent 自动识别。</p>
+        </div>
+      </div>
+
+      <form id="rag-form">
+        <label for="topic">写作主题</label>
+        <textarea id="topic" rows="6" required>为什么中国出海品牌需要进行 GEO 优化？</textarea>
+
+        <div class="field-grid">
+          <div>
+            <label for="content-type">内容类型</label>
+            <select id="content-type">
+              <option value="auto">Auto · 意图识别</option>
+              <option value="Blog">Blog</option>
+              <option value="FAQ">FAQ</option>
+              <option value="品牌介绍">品牌介绍</option>
+              <option value="产品介绍">产品介绍</option>
+            </select>
+          </div>
+          <div>
+            <label for="mode">运行模式</label>
+            <select id="mode">
+              <option value="live">Live · DeepSeek</option>
+              <option value="auto">Auto</option>
+              <option value="offline">Offline</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="audience">目标受众</label>
+        <input id="audience" value="中国出海品牌的市场与运营团队">
+
+        <label for="top-k">最终证据 Top-K <span id="top-k-value">6</span></label>
+        <input id="top-k" type="range" min="3" max="10" value="6">
+
+        <button id="run-button" class="primary-button" type="submit">
+          <span class="button-label">运行完整 RAG Workflow</span>
+          <span class="button-spinner" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <div class="quick-cases">
+        <div class="small-title">快速案例</div>
+        <button type="button" class="case-button" data-topic="为什么中国出海品牌需要进行 GEO 优化？" data-type="Blog">官方 Blog 题</button>
+        <button type="button" class="case-button" data-topic="万悉科技主要帮助客户解决什么问题？" data-type="FAQ">客户问题 FAQ</button>
+        <button type="button" class="case-button" data-topic="请介绍一下万悉科技" data-type="auto">自动意图识别</button>
+        <button type="button" class="case-button" data-topic="万悉科技 2026 年营收是多少？" data-type="FAQ">缺失事实测试</button>
+      </div>
+
+      <div class="privacy-note">
+        <strong>本地调试日志</strong>
+        <span>完整 request / retrieval / generation / validation 会写入 <code>WANXI_DATA_DIR/logs/rag_runs.jsonl</code>。API Key 不进入日志。</span>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <div id="empty-state" class="empty-state card">
+        <div class="empty-orb">R</div>
+        <h2>准备运行</h2>
+        <p>运行后这里会依次显示意图识别、Query Plan、Workflow、证据线索与最终内容。</p>
+      </div>
+
+      <div id="result-root" class="result-root hidden">
+        <section class="card summary-card">
+          <div class="section-heading compact">
+            <span class="step-number">02</span>
+            <div>
+              <h2>Intent & Run</h2>
+              <p>任务意图和本次运行身份。</p>
+            </div>
+          </div>
+          <div id="run-meta" class="run-meta"></div>
+          <div id="intent-card"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading compact">
+            <span class="step-number">03</span>
+            <div>
+              <h2>Query Plan</h2>
+              <p>原始问题保留，rewrite 只用于扩展召回。</p>
+            </div>
+          </div>
+          <div id="query-plan"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading compact">
+            <span class="step-number">04</span>
+            <div>
+              <h2>Workflow Trace</h2>
+              <p>只展示可观察的执行阶段，不展示模型隐藏推理。</p>
+            </div>
+          </div>
+          <div id="workflow-trace" class="workflow-trace"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading compact">
+            <span class="step-number">05</span>
+            <div>
+              <h2>Evidence Clues</h2>
+              <p>点击线索查看 chunk、检索分数与对应 PDF 整页证据。</p>
+            </div>
+          </div>
+          <div id="evidence-list" class="evidence-list"></div>
+        </section>
+
+        <section class="card output-card">
+          <div class="section-heading compact">
+            <span class="step-number">06</span>
+            <div>
+              <h2>Generated Content</h2>
+              <p>正文 citation 可点击并跳回对应 Evidence。</p>
+            </div>
+          </div>
+          <article id="document-output" class="document-output"></article>
+        </section>
+
+        <section class="card diagnostics-card">
+          <div class="section-heading compact">
+            <span class="step-number">07</span>
+            <div>
+              <h2>Validation & Model Calls</h2>
+              <p>Grounding 结果、token usage 与调用耗时。</p>
+            </div>
+          </div>
+          <div id="validation"></div>
+          <div id="model-calls"></div>
+          <details class="raw-details">
+            <summary>查看本次完整 JSON</summary>
+            <pre id="raw-json"></pre>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <aside id="log-drawer" class="log-drawer" aria-hidden="true">
+      <div class="log-header">
+        <div>
+          <div class="eyebrow">Local JSONL</div>
+          <h2>最近运行日志</h2>
+        </div>
+        <button id="close-logs" class="icon-button" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="log-list" class="log-list"></div>
+      <div id="log-detail" class="log-detail">
+        <p>选择一条 run 查看完整记录。</p>
+      </div>
+    </aside>
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
