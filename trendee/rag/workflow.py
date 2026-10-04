@@ -306,7 +306,6 @@ class RAGWorkflow:
         processed = process_retrieved_hits(
             retrieved_hits,
             topic=topic,
-            content_type=intent["content_type"],
             top_n=top_k,
             max_chars=8000,
         )
