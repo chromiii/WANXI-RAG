@@ -104,11 +104,12 @@ class CodeOnlySmokeTests(unittest.TestCase):
     def test_run_logger_writes_private_jsonl_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             logger = RunLogger(Path(tmp))
-            logger.append({
-                "run_id": "smoke",
-                "request": {"topic": "GEO"},
-                "result": {"status": "ok"},
-            })
+            logger.record(
+                "smoke",
+                "/api/write",
+                {"topic": "GEO"},
+                result={"status": "ok"},
+            )
             lines = logger.path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 1)
             self.assertIn('"run_id": "smoke"', lines[0])
