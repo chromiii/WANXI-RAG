@@ -1,5 +1,4 @@
 # Validated development runtime: Python 3.12
-pypdf==6.19.0
 elasticsearch==9.5.1
 
 pymupdf==1.28.2
