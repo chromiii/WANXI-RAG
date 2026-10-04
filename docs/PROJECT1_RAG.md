@@ -31,6 +31,10 @@ Weighted RRF
   ↓
 Local Cross-Encoder Reranker
   ↓
+Evidence Sufficiency Gate
+  ├─ live: LLM judges whether retrieved evidence can answer the core question
+  └─ offline: passthrough for deterministic regression only
+  ↓
 Post-Retrieval Processor
   ├─ evidence metadata / risk flags
   ├─ hard safety filter
@@ -87,7 +91,13 @@ Query Planner 独立负责检索前的问题重组。它可以选择：
 
 Cross-encoder 使用“原始 topic + Intent Classifier 的 user goal / semantic focus”作为 rerank query；presentation type 不会通过 deterministic retrieval seeds 强行改变召回目标。
 
-## 6. Post-Retrieval Processing and Context Construction
+## 6. Evidence Sufficiency
+
+固定的“营收 / 融资 / 估值”等缺失事实字段表已经移除。Live 模式在召回后使用独立的 Evidence Sufficiency Judge，只判断当前 evidence 是否足以回答用户核心问题，不生成答案，也不补充外部知识。
+
+如果核心事实缺失，工作流返回 `insufficient_evidence`；offline 模式明确不模拟语义充分性，只用于确定性 pipeline regression。
+
+## 7. Post-Retrieval Processing and Context Construction
 
 Reranker 负责相关性排序；Post-Retrieval Processor 不再二次判断 relevance，也不使用 CORE / SUPPORTING 规则重排。
 
@@ -115,7 +125,7 @@ Retrieval relevance = Cross-Encoder Reranker
 Generation safety / dedup / budget = Post-Retrieval Processor
 ```
 
-## 7. Type-specific Generation
+## 8. Type-specific Generation
 
 Blog、FAQ、品牌介绍、产品介绍具有不同 JSON schema 与 Prompt：
 
@@ -128,7 +138,7 @@ Writer 使用可直接发布的网站文案语气。普通正文禁止反复出�
 
 生成完成后，系统根据正文实际使用的 citation 从对应 chunk 的 `asset_path` 映射出 PDF 页图，去重后最多返回 3 张 `source_visuals`。图片不由 LLM 生成，确保与引用证据一致。
 
-## 8. Grounding
+## 9. Grounding
 
 生成后的 JSON 必须再次通过 deterministic validator：
 
@@ -141,7 +151,7 @@ Writer 使用可直接发布的网站文案语气。普通正文禁止反复出�
 
 如果模型 JSON 不符合 schema / grounding，LLM client 会进行一次 bounded repair；再次失败则返回错误，不静默放行。
 
-## 9. Observable Workflow
+## 10. Observable Workflow
 
 最终结果含 `workflow_trace`，仅记录可观察执行阶段，不包含模型隐藏推理：
 
@@ -150,6 +160,7 @@ scope_guard
 task_intent
 query_planning
 hybrid_retrieval
+evidence_gate
 post_retrieval_processing
 context_building
 generation
@@ -158,7 +169,7 @@ grounding_validation
 
 同时 `model_calls` 记录每次外部模型调用的 purpose、tokens 与 latency，便于 Demo 展示和调试。
 
-## 10. Example commands
+## 11. Example commands
 
 自动识别内容类型：
 
@@ -181,9 +192,9 @@ py -m trendee.cli rag-search "万悉科技主要帮助客户解决什么问题�
 py -m trendee.cli hybrid-search "万悉科技主要帮助客户解决什么问题？" --no-rerank
 ```
 
-## 11. Known limitations
+## 12. Known limitations
 
 - 当前 PDF 主要依赖文本层；文本稀疏页只做标记，尚未全量 OCR。
 - Cross-encoder reranker 是本地轻量模型，复杂抽象问题排序并不保证完美；当前通过 intent-aware rerank query 改善写作任务对齐。
-- Grounding validator 验证 citation/数字/已知误用规则，不等价于完整语义蕴含证明。
+- Grounding validator 验证 citation、数字和效果保证等确定性规则，不等价于完整语义蕴含证明。
 - 品宣资料中的营销主张只作为来源事实转述，不视为独立外部核验。
