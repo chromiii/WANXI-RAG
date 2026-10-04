@@ -158,7 +158,7 @@ class CodeOnlySmokeTests(unittest.TestCase):
         self.assertIn("与原问题相关的产品能力", intent["format_retrieval_needs"])
         seeds = retrieval_seed_queries("product_intro", intent["semantic_focus"])
         self.assertTrue(any("产品能力" in query for query in seeds))
-        self.assertTrue(any("使用场景" in query for query in seeds))
+        self.assertTrue(any("客户痛点" in query or "解决问题" in query for query in seeds))
 
     def test_explicit_product_format_preserves_primary_question_focus(self):
         intent = parse_task_intent(
