@@ -17,7 +17,7 @@ from ..llm import Client
 from ..search.query_planner import passthrough_plan, validate_query_plan
 from .context import build_context
 from .generation import offline_document, render_markdown, validate_document
-from .intent import parse_task_intent, retrieval_seed_queries
+from .intent import parse_task_intent
 from .postprocess import process_retrieved_hits
 from .scope import precheck_scope, evidence_scope_check
 
@@ -92,33 +92,6 @@ class RAGWorkflow:
             raise ValueError(f"{label} must contain 1-2000 characters")
         return value.strip()
 
-    @staticmethod
-    def _merge_plan_with_intent_seeds(
-        plan: dict[str, Any],
-        intent: dict[str, Any],
-    ) -> dict[str, Any]:
-        original = plan["original_query"]
-        seeds = retrieval_seed_queries(intent["content_type"], intent.get("semantic_focus", "generic"))
-        merged = [original]
-        # Structured introductions need schema coverage first; planner rewrites
-        # then fill any remaining slots.
-        for query in [*seeds, *plan["retrieval_queries"][1:]]:
-            value = str(query).strip()
-            if value and value not in merged:
-                merged.append(value)
-            if len(merged) >= 4:
-                break
-        return {
-            **plan,
-            "rewrite_needed": len(merged) > 1,
-            "retrieval_queries": merged,
-            "retrieval_needs": intent.get("retrieval_needs", []),
-            "reason": (
-                plan.get("reason", "")
-                + ("；已按内容类型补充 schema coverage 检索。" if seeds else "")
-            ).strip("；"),
-        }
-
     def _query_plan(
         self,
         topic: str,
@@ -127,18 +100,16 @@ class RAGWorkflow:
         client: Client,
     ) -> dict[str, Any]:
         if active_mode != "live":
-            plan = passthrough_plan(topic)
-            return self._merge_plan_with_intent_seeds(plan, intent)
+            return passthrough_plan(topic)
 
         payload = {
             "query": topic,
+            "audience": intent.get("audience"),
             "task_intent": {
                 "content_type": intent["content_type"],
                 "content_type_label": intent["content_type_label"],
-                "goal": intent["goal"],
                 "semantic_focus": intent.get("semantic_focus"),
-                "primary_retrieval_needs": intent.get("primary_retrieval_needs", []),
-                "format_retrieval_needs": intent.get("format_retrieval_needs", []),
+                "user_goal": intent.get("user_goal") or intent.get("goal"),
             },
         }
         raw = client.json(
@@ -147,17 +118,18 @@ class RAGWorkflow:
             lambda value: validate_query_plan(value, topic),
             purpose="query_planner",
         )
-        plan = validate_query_plan(raw, topic)
-        return self._merge_plan_with_intent_seeds(plan, intent)
+        return validate_query_plan(raw, topic)
 
     @staticmethod
     def _rerank_query(topic: str, intent: dict[str, Any]) -> str:
-        primary_needs = "；".join(intent.get("primary_retrieval_needs", []))
-        return (
-            f"{topic}\n"
-            f"检索重点：{primary_needs}\n"
-            f"呈现形式：{intent.get('content_type_label', intent.get('content_type'))}"
-        ).strip()
+        user_goal = str(intent.get("user_goal") or intent.get("goal") or "").strip()
+        semantic_focus = str(intent.get("semantic_focus") or "").strip()
+        parts = [topic]
+        if user_goal and user_goal != topic:
+            parts.append("用户目标：" + user_goal)
+        if semantic_focus and semantic_focus != "generic":
+            parts.append("语义焦点：" + semantic_focus)
+        return "\n".join(parts)
 
     def run(
         self,
@@ -242,17 +214,20 @@ class RAGWorkflow:
             "content_type": intent["content_type"],
             "content_type_label": intent["content_type_label"],
             "source": intent["source"],
-            "retrieval_needs": intent.get("retrieval_needs", []),
+            "presentation_source": intent.get("presentation_source"),
+            "semantic_focus": intent.get("semantic_focus"),
+            "user_goal": intent.get("user_goal"),
+            "confidence": intent.get("confidence"),
         })
 
         query_plan = self._query_plan(topic, intent, active_mode, client)
         trace.append({
             "step": "query_planning",
             "status": "ok",
+            "strategy": query_plan.get("strategy"),
             "rewrite_needed": query_plan["rewrite_needed"],
             "intent": query_plan["intent"],
             "query_count": len(query_plan["retrieval_queries"]),
-            "retrieval_needs": query_plan.get("retrieval_needs", []),
         })
 
         # Rerank a wider pool than the final context Top-K so hard filters and
