@@ -263,3 +263,4 @@ py -m unittest discover -s tests -p "test_project1_*.py" -v
 - RAG 设计：docs/PROJECT1_RAG.md
 - 测试与验收：docs/PROJECT1_TESTING.md
 - 开发与数据边界：docs/DEVELOPMENT.md
+- 提交前检查：docs/SUBMISSION.md
