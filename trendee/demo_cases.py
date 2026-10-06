@@ -24,6 +24,8 @@ def ui_project1_cases() -> list[dict[str, Any]]:
             "label": case.get("label", case["id"]),
             "topic": case["topic"],
             "content_type": case.get("content_type", "auto"),
+            "category": case.get("category", ""),
+            "reviewer_note": case.get("reviewer_note", ""),
         }
         for case in load_project1_cases()
         if case.get("show_in_ui")
