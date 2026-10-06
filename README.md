@@ -10,12 +10,7 @@
 
 ## What it does
 
-系统支持四类输出：
-
-- Blog
-- FAQ
-- 品牌介绍
-- 产品介绍
+系统支持四类输出：Blog、FAQ、品牌介绍、产品介绍。
 
 核心链路：
 
@@ -43,7 +38,7 @@ PDF
 | 检索与上下文 | BM25 + BGE-M3 dense retrieval + weighted RRF + cross-encoder rerank |
 | Prompt / 内容生成 | Intent、Query Planner、Evidence Sufficiency、四类 Writer 独立 Prompt |
 | 防幻觉与引用 | citation closure、数字检查、效果保证 guard、Evidence Sufficiency、hypothetical metadata |
-| Demo / 工程落地 | Interactive Review Website、CLI、单元测试、真实 PDF live acceptance evaluator |
+| Demo / 工程落地 | 本地 Web Demo、CLI、单元测试、真实 PDF live acceptance evaluator |
 
 ## Key design decisions
 
@@ -57,7 +52,7 @@ PDF
 
 ## Quick start
 
-完整安装说明见 docs/INSTALL.md。
+完整安装说明见 `docs/INSTALL.md`。
 
 Windows PowerShell 快速流程：
 
@@ -86,6 +81,22 @@ py -m trendee.cli serve
 ~~~text
 http://127.0.0.1:8000
 ~~~
+
+## Demo recording
+
+录屏 Demo 推荐直接使用本地 Web 页面：
+
+~~~powershell
+py -m trendee.cli serve
+~~~
+
+Demo 脚本见：`docs/DEMO.md`。
+
+建议展示三类 case：
+
+1. 官方 Blog 题：完整 RAG 写作链路；
+2. 缺失事实题：Evidence Sufficiency 阻止幻觉；
+3. 招商银行应用设想：hypothetical evidence 不升级为已交付客户案例。
 
 ## Code-only review
 
@@ -128,13 +139,7 @@ eval/project1_cases.json
 
 CLI demo、Web 快速案例和 acceptance evaluator 共用该 catalog，避免三处重复 hardcoding。
 
-## Interactive Review Website
-
-启动：
-
-~~~powershell
-py -m trendee.cli serve
-~~~
+## Local Web Demo
 
 页面可观察：
 
@@ -159,22 +164,14 @@ WANXI-RAG/
 │  ├─ rag/                # scope / intent / evidence gate / writer workflow
 │  ├─ grounding.py        # citation / numeric / guarantee guards
 │  ├─ llm.py              # DeepSeek-compatible model boundary
-│  ├─ server.py           # local Debug Studio API
+│  ├─ server.py           # local Web Demo API
 │  └─ cli.py
 ├─ prompts/               # model prompts
-├─ eval/
-│  └─ project1_cases.json # single acceptance/demo case catalog
+├─ eval/project1_cases.json
 ├─ scripts/
-│  ├─ setup_dev.py
-│  └─ eval_project1.py
-├─ tests/                 # code-only regression suite
-├─ web/                   # interactive reviewer website
+├─ tests/
+├─ web/
 ├─ docs/
-│  ├─ INSTALL.md
-│  ├─ DEMO.md
-│  ├─ PROJECT1_RAG.md
-│  ├─ PROJECT1_TESTING.md
-│  └─ DEVELOPMENT.md
 ├─ docker-compose.yml
 ├─ requirements.lock
 └─ requirements-ml.txt
@@ -196,7 +193,7 @@ data/private/
 └─ logs/
 ~~~
 
-也可以通过 WANXI_DATA_DIR 指向其他私有路径。
+也可以通过 `WANXI_DATA_DIR` 指向其他私有路径。
 
 ## Models and infrastructure
 
@@ -218,35 +215,13 @@ py -m unittest discover -s tests -v
 py -m unittest discover -s tests -p "test_project1_*.py" -v
 ~~~
 
-测试覆盖包括：
-
-- Intent / explicit presentation contract
-- Query transformation contract
-- PDF page preservation / boilerplate / chunk boundary
-- Hybrid retrieval primitives
-- Evidence Sufficiency
-- hypothetical evidence handling
-- dedup / context budget
-- Writer schema
-- citation closure / numeric hallucination / unsupported guarantee
-- source visual provenance
-
-详细说明见 docs/PROJECT1_TESTING.md。
+测试覆盖包括：Intent、Query Transformation、PDF page preservation、Hybrid Retrieval、Evidence Sufficiency、hypothetical evidence、dedup/context budget、Writer schema、citation closure、numeric hallucination、source visual provenance。
 
 ## Security & privacy
 
-不要提交：
+不要提交：`.env`、API Key、招聘方 PDF、normalized evidence、page renders、embeddings / Elasticsearch volume、website runtime snapshot、evaluation reports、任何包含私有源材料的生成演示输出。
 
-- .env / API Key
-- 招聘方 PDF
-- normalized evidence
-- page renders
-- embeddings / Elasticsearch volume
-- website runtime snapshot
-- evaluation reports
-- 任何包含私有源材料的生成演示输出
-
-.gitignore 已覆盖这些运行时数据。完整边界见 data/README.md 与 docs/DEVELOPMENT.md。
+`.gitignore` 已覆盖这些运行时数据。完整边界见 `data/README.md` 与 `docs/DEVELOPMENT.md`。
 
 ## Known limitations
 
@@ -258,9 +233,9 @@ py -m unittest discover -s tests -p "test_project1_*.py" -v
 
 ## More docs
 
-- 安装与从零运行：docs/INSTALL.md
-- 交互网站评审说明：docs/DEMO.md
-- RAG 设计：docs/PROJECT1_RAG.md
-- 测试与验收：docs/PROJECT1_TESTING.md
-- 开发与数据边界：docs/DEVELOPMENT.md
-- 提交前检查：docs/SUBMISSION.md
+- 安装与从零运行：`docs/INSTALL.md`
+- 录屏 Demo 脚本：`docs/DEMO.md`
+- RAG 设计：`docs/PROJECT1_RAG.md`
+- 测试与验收：`docs/PROJECT1_TESTING.md`
+- 开发与数据边界：`docs/DEVELOPMENT.md`
+- 提交前检查：`docs/SUBMISSION.md`
