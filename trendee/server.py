@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import __version__
 from .config import ROOT, runtime_data_dir
 from .demo_cases import ui_project1_cases
 from .runlog import RunLogger
@@ -44,7 +45,7 @@ def make_handler(workbench, logger=None, data_dir=None):
             }
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "TrendeeDemo/1.1"
+        server_version = f"TrendeeDemo/{__version__}"
 
         def log_message(self, format, *args):
             return
