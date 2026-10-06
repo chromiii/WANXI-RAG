@@ -1,3 +1,4 @@
+from . import __version__
 from dataclasses import asdict
 import json
 from pathlib import Path
@@ -45,7 +46,7 @@ class Workbench:
         self._rag_retriever = None
 
     def info(self):
-        return {"version": "1.1.0", "api_configured": bool(self.config.api_key), "model": self.config.model,
+        return {"version": __version__, "api_configured": bool(self.config.api_key), "model": self.config.model,
                 "default_mode": self.config.mode(),
                 "pdf_pages": int(self.pdf_manifest.get("page_count") or 0),
                 "pdf_chunks": int(self.pdf_manifest.get("normalized_chunk_count") or 0),
