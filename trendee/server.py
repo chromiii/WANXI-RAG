@@ -265,7 +265,7 @@ def serve(host="127.0.0.1", port=8000):
         (host, port),
         make_handler(workbench, logger=logger, data_dir=private_dir),
     )
-    print(f"Trendee Evidence Studio: http://{host}:{port}", flush=True)
+    print(f"Trendee RAG Interactive Review: http://{host}:{port}", flush=True)
     print(f"RAG run log: {logger.path}", flush=True)
     if workbench.config.api_key:
         print(f"LLM: LIVE ready ({workbench.config.model})", flush=True)
