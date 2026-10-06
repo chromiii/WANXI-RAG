@@ -82,17 +82,17 @@ py -m trendee.cli serve
 http://127.0.0.1:8000
 ~~~
 
-## Demo recording
+## Local Demo
 
-录屏 Demo 推荐直接使用本地 Web 页面：
+本地 Demo 可直接通过 Web 页面运行：
 
 ~~~powershell
 py -m trendee.cli serve
 ~~~
 
-Demo 脚本见：`docs/DEMO.md`。
+运行与验收说明见：`docs/DEMO.md`。
 
-建议展示三类 case：
+推荐验证三类 case：
 
 1. 官方 Blog 题：完整 RAG 写作链路；
 2. 缺失事实题：Evidence Sufficiency 阻止幻觉；
@@ -234,7 +234,7 @@ py -m unittest discover -s tests -p "test_project1_*.py" -v
 ## More docs
 
 - 安装与从零运行：`docs/INSTALL.md`
-- 录屏 Demo 脚本：`docs/DEMO.md`
+- 本地 Demo 与验收：`docs/DEMO.md`
 - RAG 设计：`docs/PROJECT1_RAG.md`
 - 测试与验收：`docs/PROJECT1_TESTING.md`
 - 开发与数据边界：`docs/DEVELOPMENT.md`
