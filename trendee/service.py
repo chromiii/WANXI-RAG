@@ -57,7 +57,7 @@ class Workbench:
                 "website_urls": [p["url"] for p in self.snapshot["pages"]] if self.snapshot else [],
                 "retrieval": "Elasticsearch BM25 + BGE-M3 dense kNN + weighted multi-query RRF + local cross-encoder reranker",
                 "query_planner": "DeepSeek in live mode; original-query passthrough offline",
-                "rag_workflow": "Task Intent -> Query Plan -> Hybrid Retrieval -> Context -> Type-specific Writer -> Grounding",
+                "rag_workflow": "Task Intent -> Query Plan -> Hybrid Retrieval -> Evidence Sufficiency -> Post-Retrieval -> Context -> Type-specific Writer -> Grounding",
                 "content_types": ["Blog", "FAQ", "品牌介绍", "产品介绍"],
                 "agents": [{**asdict(s), "dependencies": list(s.dependencies)} for s in REGISTRY.values()]}
 
