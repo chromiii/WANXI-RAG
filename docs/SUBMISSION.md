@@ -1,12 +1,12 @@
 # Submission Checklist
 
-Use this checklist before sending the Project 1 repository and recorded demo.
+Use this checklist before submitting the Project 1 repository and related deliverables.
 
 ## Repository
 
 - [ ] README opens with the Project 1 goal and architecture.
 - [ ] docs/INSTALL.md reproduces the local setup from a clean clone.
-- [ ] docs/DEMO.md matches the recorded demo flow.
+- [ ] docs/DEMO.md documents reproducible local demo and acceptance cases.
 - [ ] No private PDF, parsed evidence, page image, evaluation report or run log is tracked.
 - [ ] No populated .env, API key, token or credential is tracked.
 - [ ] Generated examples/ output is not tracked.
@@ -44,7 +44,7 @@ data/private/eval/project1_eval_live.json
 
 ## Demo validation
 
-Before recording:
+Before submission:
 
 ~~~powershell
 py -m trendee.cli serve
@@ -66,9 +66,9 @@ Open http://127.0.0.1:8000 and verify:
 Send:
 
 1. GitHub repository link;
-2. recorded demo video;
-3. optional PPT overview;
-4. any written answer/document requested by the recruiter.
+2. required demo video;
+3. any requested sample output or written material;
+4. optional PPT overview.
 
 Keep private runtime artifacts out of the public repository. If the recruiter needs the original PDF or generated evaluation report, send them only through the channel they provided.
 
