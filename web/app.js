@@ -20,6 +20,95 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove("show"), 2400);
 }
 
+function safeFilename(value) {
+  return String(value || "sample")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64) || "sample";
+}
+
+function downloadText(filename, text, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportMarkdownText(result) {
+  const intent = result.task_intent || {};
+  const label = intent.content_type_label || intent.content_type || "RAG output";
+  const topic = result.topic || intent.primary_question || $("#topic")?.value || "-";
+  const status = result.status || "-";
+  const body = String(result.markdown || result.message || "No generated document.")
+    .replace(/\[([^\]]+)\]\(http:\/\/(?:127\.0\.0\.1|localhost):8000\/assets\/pages\/[^)]+\)/g, "$1");
+
+  const evidence = (result.source_visuals || []).map(item => {
+    const page = item.page ?? "?";
+    const id = item.id || "-";
+    const heading = item.heading || "PDF evidence";
+    return `- PDF p.${page} · ${id} · ${heading}`;
+  });
+
+  const parts = [
+    "# WANXI Project 1 · Sample Output",
+    "",
+    `- Input: ${topic}`,
+    `- Content type: ${label}`,
+    `- Status: ${status}`,
+    result.run_id ? `- Run ID: ${result.run_id}` : null,
+    "",
+    "---",
+    "",
+    body.trim(),
+  ].filter(value => value !== null);
+
+  if (evidence.length) {
+    parts.push("", "## Source Evidence", "", ...evidence);
+  }
+  return parts.join("\n") + "\n";
+}
+
+function updateExportControls(result) {
+  const md = $("#download-md");
+  const pdf = $("#export-pdf");
+  if (md) md.disabled = false;
+  if (pdf) pdf.disabled = false;
+
+  const meta = $("#print-meta");
+  if (!meta) return;
+  clear(meta);
+  const intent = result.task_intent || {};
+  const topic = result.topic || intent.primary_question || $("#topic")?.value || "-";
+  const type = intent.content_type_label || intent.content_type || "RAG output";
+  meta.append(node("div", "print-kicker", "WANXI AI Engineer Take-home · Project 1"));
+  meta.append(node("h1", "", "RAG Sample Output"));
+  meta.append(node("p", "", "Input · " + topic));
+  meta.append(node("p", "", "Content type · " + type + " · Status · " + (result.status || "-")));
+  if (result.run_id) meta.append(node("p", "", "Run ID · " + result.run_id));
+}
+
+function downloadMarkdown() {
+  if (!state.result) return;
+  const intent = state.result.task_intent || {};
+  const type = intent.content_type_label || intent.content_type || "output";
+  const filename = "WANXI_Project1_" + safeFilename(type) + "_sample.md";
+  downloadText(filename, exportMarkdownText(state.result), "text/markdown;charset=utf-8");
+  showToast("Markdown 已下载");
+}
+
+function exportPdf() {
+  if (!state.result) return;
+  document.body.classList.add("print-export");
+  window.print();
+  setTimeout(() => document.body.classList.remove("print-export"), 500);
+}
+
 async function jsonFetch(url, options = {}) {
   const response = await fetch(url, options);
   let value;
@@ -495,6 +584,7 @@ function renderResult(result) {
   renderEvidence(result);
   renderDocument(result);
   renderDiagnostics(result);
+  updateExportControls(result);
   $("#raw-json").textContent = JSON.stringify(result, null, 2);
 }
 
@@ -573,6 +663,8 @@ async function loadLogs() {
 
 $("#rag-form").addEventListener("submit", runWorkflow);
 $("#top-k").addEventListener("input", event => $("#top-k-value").textContent = event.target.value);
+$("#download-md").addEventListener("click", downloadMarkdown);
+$("#export-pdf").addEventListener("click", exportPdf);
 $("#refresh-logs").addEventListener("click", openLogs);
 $("#close-logs").addEventListener("click", closeLogs);
 $("#drawer-backdrop").addEventListener("click", closeLogs);
