@@ -92,6 +92,8 @@ py -m trendee.cli serve
 
 运行与验收说明见：`docs/DEMO.md`。
 
+每次运行完成后，Generated Content 区域可直接下载 Markdown，或通过浏览器打印流程导出 PDF，方便保存为独立示例输出。
+
 推荐验证三类 case：
 
 1. 官方 Blog 题：完整 RAG 写作链路；
@@ -149,6 +151,8 @@ CLI demo、Web 快速案例和 acceptance evaluator 共用该 catalog，避免�
 - Evidence Sufficiency
 - Post-Retrieval 状态
 - 最终 Writer JSON / Markdown
+- 一键下载本次结果为 Markdown
+- 一键导出打印友好的 PDF（浏览器 Save as PDF）
 - citation → chunk → PDF physical page
 - Grounding 结果
 - model call token / latency metadata
