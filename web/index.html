@@ -3,30 +3,72 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trendee RAG Debug Studio</title>
+  <title>Trendee RAG Interactive Review</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
     <div>
-      <div class="eyebrow">Project 1 · Evidence-backed Writing</div>
-      <h1>Trendee RAG Debug Studio</h1>
-      <p class="subtitle">看得见意图、检索、证据、生成与校验的本地测试台</p>
+      <div class="eyebrow">WANXI AI Engineer Take-home · Project 1</div>
+      <h1>Trendee RAG Interactive Review</h1>
+      <p class="subtitle">可交互查看 Intent、检索、证据充分性、写作与 Grounding 的完整链路</p>
     </div>
     <div class="status-group">
       <span id="api-status" class="status-pill">API · 检查中</span>
       <span id="model-status" class="status-pill">Model · -</span>
-      <button id="refresh-logs" class="ghost-button" type="button">最近日志</button>
+      <button id="refresh-logs" class="ghost-button" type="button">Run Logs</button>
     </div>
   </header>
+
+  <section class="reviewer-shell">
+    <div class="reviewer-hero card">
+      <div class="reviewer-copy">
+        <div class="eyebrow">Interactive submission</div>
+        <h2>从用户问题到可追溯官网内容</h2>
+        <p>本页面直接运行真实 Project 1 工作流。建议先点“官方 Blog 题”查看完整链路，再测试“证据不足”和“设想边界”两个安全案例。</p>
+      </div>
+      <div class="reviewer-stats">
+        <div class="review-stat">
+          <span>PDF</span>
+          <strong id="review-pdf">-</strong>
+        </div>
+        <div class="review-stat">
+          <span>Chunks</span>
+          <strong id="review-chunks">-</strong>
+        </div>
+        <div class="review-stat">
+          <span>Search</span>
+          <strong>BM25 + BGE-M3</strong>
+        </div>
+        <div class="review-stat">
+          <span>Grounding</span>
+          <strong>Citation + Numeric</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="reviewer-flow card">
+      <div class="small-title">How to review</div>
+      <div class="reviewer-steps">
+        <div><span>01</span><strong>选择案例</strong><small>官方题或边界测试</small></div>
+        <div><span>02</span><strong>看 Query Plan</strong><small>Original query 永远保留</small></div>
+        <div><span>03</span><strong>看 Evidence</strong><small>BM25 / Dense / RRF / Rerank</small></div>
+        <div><span>04</span><strong>看 Safety</strong><small>Evidence Sufficiency + Post-Retrieval</small></div>
+        <div><span>05</span><strong>点 Citation</strong><small>回到 chunk 与 PDF 物理页</small></div>
+      </div>
+      <div class="architecture-strip">
+        <span>Intent</span><b>→</b><span>Query Transform</span><b>→</b><span>Hybrid Retrieval</span><b>→</b><span>Rerank</span><b>→</b><span>Evidence Gate</span><b>→</b><span>Writer</span><b>→</b><span>Grounding</span>
+      </div>
+    </div>
+  </section>
 
   <main class="layout">
     <aside class="control-panel card">
       <div class="section-heading">
         <span class="step-number">01</span>
         <div>
-          <h2>测试输入</h2>
-          <p>内容类型可显式指定，也可交给 Task Intent 自动识别。</p>
+          <h2>Interactive Test</h2>
+          <p>选择预设案例，或输入任意与万悉 / Trendee / GEO 相关的问题。</p>
         </div>
       </div>
 
@@ -68,23 +110,23 @@
       </form>
 
       <div class="quick-cases">
-        <div class="small-title">快速案例</div>
+        <div class="small-title">Recommended reviewer cases</div>
         <div id="quick-case-list">
           <span class="query-note">加载案例中…</span>
         </div>
       </div>
 
       <div class="privacy-note">
-        <strong>本地调试日志</strong>
-        <span>完整 request / retrieval / generation / validation 会写入 <code>WANXI_DATA_DIR/logs/rag_runs.jsonl</code>。API Key 不进入日志。</span>
+        <strong>Privacy boundary</strong>
+        <span>PDF、索引、运行结果和日志仅保存在本地 runtime。API Key 不进入日志，也不会提交到 GitHub。</span>
       </div>
     </aside>
 
     <section class="workspace">
       <div id="empty-state" class="empty-state card">
         <div class="empty-orb">R</div>
-        <h2>准备运行</h2>
-        <p>运行后这里会依次显示意图识别、Query Plan、Workflow、证据线索与最终内容。</p>
+        <h2>选择一个案例开始</h2>
+        <p>推荐先运行“官方 Blog 题”。页面会依次展示 Intent、Query Plan、Workflow、Evidence、Generated Content 与 Validation。</p>
       </div>
 
       <div id="result-root" class="result-root hidden">
