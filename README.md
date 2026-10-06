@@ -43,7 +43,7 @@ PDF
 | 检索与上下文 | BM25 + BGE-M3 dense retrieval + weighted RRF + cross-encoder rerank |
 | Prompt / 内容生成 | Intent、Query Planner、Evidence Sufficiency、四类 Writer 独立 Prompt |
 | 防幻觉与引用 | citation closure、数字检查、效果保证 guard、Evidence Sufficiency、hypothetical metadata |
-| Demo / 工程落地 | CLI、Local Debug Studio、单元测试、真实 PDF live acceptance evaluator |
+| Demo / 工程落地 | Interactive Review Website、CLI、单元测试、真实 PDF live acceptance evaluator |
 
 ## Key design decisions
 
@@ -128,7 +128,7 @@ eval/project1_cases.json
 
 CLI demo、Web 快速案例和 acceptance evaluator 共用该 catalog，避免三处重复 hardcoding。
 
-## Local Debug Studio
+## Interactive Review Website
 
 启动：
 
@@ -168,7 +168,7 @@ WANXI-RAG/
 │  ├─ setup_dev.py
 │  └─ eval_project1.py
 ├─ tests/                 # code-only regression suite
-├─ web/                   # local Debug Studio
+├─ web/                   # interactive reviewer website
 ├─ docs/
 │  ├─ INSTALL.md
 │  ├─ DEMO.md
@@ -244,7 +244,7 @@ py -m unittest discover -s tests -p "test_project1_*.py" -v
 - embeddings / Elasticsearch volume
 - website runtime snapshot
 - evaluation reports
-- Demo 视频
+- 任何包含私有源材料的生成演示输出
 
 .gitignore 已覆盖这些运行时数据。完整边界见 data/README.md 与 docs/DEVELOPMENT.md。
 
@@ -259,7 +259,7 @@ py -m unittest discover -s tests -p "test_project1_*.py" -v
 ## More docs
 
 - 安装与从零运行：docs/INSTALL.md
-- Demo / 录屏脚本：docs/DEMO.md
+- 交互网站评审说明：docs/DEMO.md
 - RAG 设计：docs/PROJECT1_RAG.md
 - 测试与验收：docs/PROJECT1_TESTING.md
 - 开发与数据边界：docs/DEVELOPMENT.md
