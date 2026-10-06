@@ -1,3 +1,6 @@
-# Optional local ML dependencies for dense retrieval.
-# Kept separate from the base runtime so CI and non-ML workflows stay lightweight.
+# Required for the full Project 1 local retrieval pipeline.
+# Kept separate from requirements.lock so CI/code-only review stays lightweight.
+# sentence-transformers installs the PyTorch/Transformers stack used by:
+# - BAAI/bge-m3 dense embedding
+# - BAAI/bge-reranker-base cross-encoder reranking
 sentence-transformers==6.1.0
