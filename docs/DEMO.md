@@ -1,63 +1,45 @@
-# Demo Guide
+# Interactive Review Website
 
-This document is a suggested 5–8 minute walkthrough for Project 1.
+Project 1 uses the local website as the primary interactive review surface.
 
-## Demo goal
+The goal is that a reviewer can understand and verify the RAG workflow without a narrated recording.
 
-Show that the system is not just “PDF + LLM”. The demo should make the complete engineering chain visible:
+## 1. Start the website
 
-~~~text
-User request
-→ Intent
-→ Query Transformation
-→ Hybrid Retrieval
-→ Reranking
-→ Evidence Sufficiency
-→ Post-Retrieval Processing
-→ Type-specific Writer
-→ Grounding
-→ Cited output + source page
-~~~
-
-The most persuasive demo is one successful writing case plus one safe early-stop / hallucination boundary case.
-
-## 1. Pre-demo checklist
-
-Before recording:
+With the authorized PDF, Elasticsearch index and local environment prepared:
 
 ~~~powershell
 docker compose up -d elasticsearch
 py -m trendee.cli index-info
 py -m trendee.cli info
-py -m unittest discover -s tests -v
-py scripts\eval_project1.py --mode live --require-pdf-artifacts
-~~~
-
-Then start the UI:
-
-~~~powershell
 py -m trendee.cli serve
 ~~~
 
-Open http://127.0.0.1:8000.
-
-Do not display the real .env, API key, local file-system secrets or private evaluation JSON in the recording.
-
-## 2. Recommended 5–8 minute structure
-
-### 0:00–0:45 — Explain the task
-
-Use one sentence:
-
-> The system reads the employer-provided brochure, builds page-traceable evidence, retrieves relevant content with hybrid search, generates website copy and validates every factual claim against retrieved evidence.
-
-Briefly mention the four output formats: Blog, FAQ, brand introduction and product introduction.
-
-### 0:45–1:30 — Show the architecture
+Open:
 
 ~~~text
-Intent Classifier
-→ Query Planner
+http://127.0.0.1:8000
+~~~
+
+The website is intentionally local because the employer PDF, parsed evidence, page images, Elasticsearch data and model key are runtime-only private assets.
+
+## 2. Recommended review order
+
+The landing area explains the pipeline and displays the loaded PDF/chunk status.
+
+Recommended sequence:
+
+### Case A — Official Blog
+
+~~~text
+为什么中国出海品牌需要进行 GEO 优化？
+~~~
+
+This demonstrates the complete successful path:
+
+~~~text
+Intent
+→ Query Transformation
 → BM25 + BGE-M3
 → weighted RRF
 → Cross-Encoder
@@ -65,56 +47,39 @@ Intent Classifier
 → Post-Retrieval
 → Writer
 → Grounding
+→ cited output
 ~~~
 
-Key design points worth saying aloud:
+A reviewer can inspect:
 
-- the original user query is always preserved;
-- presentation format cannot overwrite the user’s semantic goal;
-- retrieval relevance is decided before post-processing;
-- missing facts stop before generation;
-- citations point back to stable chunk IDs and physical PDF pages.
+- semantic focus / user goal;
+- original and additional retrieval queries;
+- retrieval channels and reranker score;
+- selected / filtered / deduplicated evidence;
+- generated website copy;
+- citation → chunk → PDF physical page;
+- grounding and model-call metadata.
 
-### 1:30–4:30 — Run the official Blog case
+### Case B — Unsupported fact
 
-Use:
-
-~~~text
-为什么中国出海品牌需要进行 GEO 优化？
-~~~
-
-Walk through the UI in this order:
-
-1. Intent & Run — show content type, semantic focus and user goal.
-2. Query Plan — show the original query and any rewrite/expand/decompose queries.
-3. Workflow Trace — point out each observable execution stage.
-4. Evidence Clues — show BM25/dense/RRF/reranker provenance.
-5. Generated Content — show structured website copy rather than a retrieval report.
-6. Citation — trace a citation back to the chunk and PDF page image.
-7. Validation — show citation/numeric grounding pass.
-
-Do not spend time reading the entire generated article.
-
-### 4:30–6:00 — Show a missing-fact boundary
-
-Recommended manual query:
+Use the built-in missing-fact case or manually ask:
 
 ~~~text
 万悉科技总部办公面积是多少？
 ~~~
 
-This phrase is intentionally not a hardcoded missing-fact field.
+The phrase “总部办公面积” is not a hardcoded missing-fact field.
 
 Expected behavior:
 
 ~~~text
-Retrieval may still find company-related chunks
-→ Evidence Sufficiency checks whether the requested fact is actually present
+related evidence may still be retrieved
+→ Evidence Sufficiency checks direct support
 → insufficient_evidence
-→ Writer is not allowed to invent an answer
+→ Writer does not invent an answer
 ~~~
 
-### 6:00–7:00 — Show the hypothetical-case boundary
+### Case C — Hypothetical evidence
 
 Use:
 
@@ -122,55 +87,110 @@ Use:
 万悉科技对招商银行有什么 GEO 应用设想？
 ~~~
 
-Explain that the runtime no longer contains an entity-specific “招商银行” grounding rule.
+The runtime does not contain an entity-specific “招商银行” grounding rule.
 
-The output should preserve hypothetical wording and must not upgrade the source into an already-served customer, confirmed cooperation, delivered project or measured effect.
+The generated answer should preserve the source as an application hypothesis and must not silently promote it into confirmed cooperation, delivered work or measured client results.
 
-### 7:00–8:00 — Close with engineering evidence
+## 3. What the website is designed to prove
 
-Show:
+The website is not a decorative frontend. It exposes engineering behavior that can be checked directly:
+
+1. **Intent is separate from presentation format.**
+2. **Original query is preserved during query transformation.**
+3. **Retrieval combines lexical and semantic channels.**
+4. **Reranking owns relevance ordering.**
+5. **Evidence Sufficiency can stop unsupported questions before writing.**
+6. **Post-Retrieval handles safety, dedup and context budget without becoming another semantic ranker.**
+7. **Generated claims carry stable citation IDs.**
+8. **Citations map back to physical PDF pages.**
+9. **Grounding applies deterministic checks after generation.**
+
+## 4. Website sections
+
+### Interactive Test
+
+Choose an acceptance case or enter a custom question.
+
+### Intent & Run
+
+Shows:
+
+- content type;
+- semantic focus;
+- user goal;
+- confidence;
+- run identity.
+
+### Query Plan
+
+Shows:
+
+- original query;
+- strategy: passthrough / rewrite / expand / decompose;
+- additional retrieval queries;
+- rerank query.
+
+### Workflow Trace
+
+Shows observable execution stages only. It does not expose hidden model reasoning.
+
+### Evidence Clues
+
+Shows each candidate’s:
+
+- PDF page and stable evidence ID;
+- reranker / RRF information;
+- retrieval channels;
+- evidence type and risk flags;
+- post-retrieval state;
+- physical page preview.
+
+### Generated Content
+
+Renders Blog / FAQ / brand / product output in a publishable layout.
+
+Citation buttons jump directly to the supporting evidence.
+
+### Validation & Model Calls
+
+Shows deterministic validation results plus model-call latency/token metadata.
+
+### Run Logs
+
+Shows the local append-only JSONL execution log. Credential-shaped fields are redacted.
+
+## 5. Pre-review validation
+
+Before handing the repository to a reviewer:
 
 ~~~powershell
 py -m unittest discover -s tests -v
-~~~
-
-and mention:
-
-~~~powershell
 py scripts\eval_project1.py --mode live --require-pdf-artifacts
 ~~~
 
-Close with the privacy boundary: the employer PDF, parsed evidence, embeddings, model key, run logs and evaluation reports are runtime-only and are not committed to GitHub.
+Expected: all regression and selected live acceptance cases pass.
 
-## 3. What to avoid in the recording
+## 6. Privacy boundary
 
-Avoid:
+Do not expose or commit:
 
-- scrolling through hundreds of lines of JSON;
-- showing .env or API keys;
-- spending time on package installation;
-- reading every retrieval score;
-- presenting marketing claims as independently verified facts;
-- claiming the grounding validator proves full semantic entailment;
-- claiming OCR/vision is implemented when it is not.
+- populated .env;
+- DeepSeek API key;
+- employer PDF;
+- normalized evidence;
+- PDF page images;
+- Elasticsearch volume;
+- live evaluation JSON;
+- local run logs.
 
-## 4. Backup CLI demo
+The website reads these from the local runtime only.
 
-If the browser UI fails:
+## 7. If the reviewer only wants to inspect code
+
+The repository remains testable without private data:
 
 ~~~powershell
-py -m trendee.cli write "为什么中国出海品牌需要进行 GEO 优化？" --mode live --type Blog
-py scripts\eval_project1.py --mode live --case official_blog
-py scripts\eval_project1.py --mode live --case hypothetical_bank_scenario
+py scripts\setup_dev.py
 ~~~
 
-## 5. Suggested submission bundle
-
-The external submission can contain:
-
-1. GitHub repository link;
-2. Demo video;
-3. README as the entry point;
-4. optional screenshot or terminal capture showing regression tests and the live acceptance suite passing.
-
-Do not submit the private runtime directory unless the employer explicitly asks for it through an approved channel.
+The README and docs/PROJECT1_RAG.md explain the architecture; the full interactive website requires the authorized private runtime data.
