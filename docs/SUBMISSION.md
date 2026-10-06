@@ -1,12 +1,12 @@
 # Submission Checklist
 
-Use this checklist before sending the Project 1 repository and Demo.
+Use this checklist before sending the Project 1 repository and interactive review website instructions.
 
 ## Repository
 
 - [ ] README opens with the Project 1 goal and architecture.
 - [ ] docs/INSTALL.md reproduces the local setup from a clean clone.
-- [ ] docs/DEMO.md matches the recorded demo flow.
+- [ ] docs/DEMO.md matches the interactive review website.
 - [ ] No private PDF, parsed evidence, page image, evaluation report or run log is tracked.
 - [ ] No populated .env, API key, token or credential is tracked.
 - [ ] Generated examples/ output is not tracked.
@@ -42,9 +42,9 @@ The generated report stays local:
 data/private/eval/project1_eval_live.json
 ~~~
 
-## Demo validation
+## Website validation
 
-Before recording:
+Before submission:
 
 ~~~powershell
 py -m trendee.cli serve
@@ -66,10 +66,12 @@ Open http://127.0.0.1:8000 and verify:
 Send:
 
 1. GitHub repository link;
-2. Demo video;
-3. any written answer/document requested by the recruiter.
+2. the one-line website launch command: `py -m trendee.cli serve`;
+3. `docs/INSTALL.md` for clean setup;
+4. `docs/DEMO.md` for the recommended interactive review order;
+5. any written answer/document requested by the recruiter.
 
-Keep private runtime artifacts out of the public repository. If the recruiter needs the original PDF or generated evaluation report, send them only through the channel they provided.
+The website is local by design because it depends on private runtime evidence and credentials. Keep those artifacts out of the public repository. If the recruiter needs the original PDF or generated evaluation report, send them only through the channel they provided.
 
 ## Final repository sanity check
 
