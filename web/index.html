@@ -176,13 +176,18 @@
         </section>
 
         <section class="card output-card">
-          <div class="section-heading compact">
+          <div class="section-heading compact output-heading">
             <span class="step-number">06</span>
             <div>
               <h2>Generated Content</h2>
-              <p>正文 citation 可点击并跳回对应 Evidence。</p>
+              <p>正文 citation 可点击并跳回对应 Evidence；结果可直接导出为 Markdown 或 PDF。</p>
+            </div>
+            <div class="export-actions">
+              <button id="download-md" class="ghost-button export-button" type="button" disabled>下载 Markdown</button>
+              <button id="export-pdf" class="ghost-button export-button" type="button" disabled>导出 PDF</button>
             </div>
           </div>
+          <div id="print-meta" class="print-meta"></div>
           <article id="document-output" class="document-output"></article>
         </section>
 
