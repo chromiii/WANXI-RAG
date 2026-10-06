@@ -11,7 +11,7 @@ Keep these outside version control:
 - captured website snapshots used as runtime evidence
 - embeddings and vector indexes (FAISS, Chroma, Qdrant local storage, etc.)
 - SQLite/local databases, pickle/NumPy retrieval caches
-- demo videos and generated outputs
+- demo videos and generated outputs (including repository-root `examples/` created by the demo CLI)
 - credentials and real `.env` files
 
 Recommended local layout:
