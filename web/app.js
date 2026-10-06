@@ -39,6 +39,10 @@ async function loadInfo() {
     api.textContent = state.info.api_configured ? "API · Live ready" : "API · Offline only";
     api.classList.toggle("good", !!state.info.api_configured);
     $("#model-status").textContent = "Model · " + (state.info.model || "-");
+    const pdf = $("#review-pdf");
+    const chunks = $("#review-chunks");
+    if (pdf) pdf.textContent = (state.info.pdf_pages || 0) + " pages";
+    if (chunks) chunks.textContent = String(state.info.pdf_chunks || 0);
     if (!state.info.api_configured && $("#mode").value === "live") $("#mode").value = "offline";
   } catch (error) {
     $("#api-status").textContent = "API · unavailable";
@@ -55,11 +59,16 @@ async function loadQuickCases() {
     const data = await jsonFetch("/api/cases");
     clear(root);
     (data.cases || []).forEach(item => {
-      const button = node("button", "case-button", item.label || item.id);
+      const button = node("button", "case-button");
       button.type = "button";
+      button.append(node("strong", "", item.label || item.id));
+      if (item.reviewer_note) {
+        button.append(node("span", "", item.reviewer_note));
+      }
       button.addEventListener("click", () => {
         $("#topic").value = item.topic || "";
         $("#content-type").value = item.content_type || "auto";
+        document.querySelector("#topic").focus();
       });
       root.append(button);
     });
