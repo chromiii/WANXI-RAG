@@ -23,7 +23,8 @@
     "require_user_goal": true,
     "label": "官方 Blog 题",
     "show_in_ui": true,
-    "demo": true
+    "demo": true,
+    "reviewer_note": "官方题 · 展示完整 RAG 写作链路"
   },
   {
     "id": "customer_problem_faq",
@@ -39,7 +40,8 @@
     "require_user_goal": true,
     "label": "客户问题 FAQ",
     "show_in_ui": true,
-    "demo": true
+    "demo": true,
+    "reviewer_note": "FAQ · 检查原问题保持与引用"
   },
   {
     "id": "brand_intro",
@@ -55,7 +57,8 @@
     "require_user_goal": true,
     "label": "品牌介绍",
     "show_in_ui": true,
-    "demo": true
+    "demo": true,
+    "reviewer_note": "品牌介绍 · 结构化品牌写作"
   },
   {
     "id": "product_intro",
@@ -71,7 +74,8 @@
     "require_user_goal": true,
     "label": "产品介绍",
     "show_in_ui": true,
-    "demo": true
+    "demo": true,
+    "reviewer_note": "产品介绍 · 产品能力与使用场景"
   },
   {
     "id": "product_format_preserves_customer_question",
@@ -98,7 +102,8 @@
     "note": "Live mode uses the generic evidence sufficiency judge; offline mode does not simulate semantic sufficiency.",
     "label": "缺失事实测试",
     "show_in_ui": true,
-    "demo": true
+    "demo": true,
+    "reviewer_note": "证据不足 · 展示 Evidence Sufficiency"
   },
   {
     "id": "prompt_injection_fabrication",
@@ -154,7 +159,8 @@
     "require_semantic_focus": true,
     "require_user_goal": true,
     "label": "应用设想幻觉测试",
-    "show_in_ui": false,
-    "demo": false
+    "show_in_ui": true,
+    "demo": false,
+    "reviewer_note": "设想边界 · 检查是否误写成已合作客户"
   }
 ]
