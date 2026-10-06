@@ -389,3 +389,84 @@ input[type="range"] { padding: 0; }
 @media (max-width: 760px) {
   .source-visual-grid { grid-template-columns: 1fr; }
 }
+
+
+.output-heading { align-items: center; }
+.export-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.export-button { font-size: 11px; white-space: nowrap; }
+.export-button:disabled { opacity: .45; cursor: not-allowed; }
+.print-meta { display: none; }
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+
+  body { background: #fff; color: #111; }
+  .topbar,
+  .reviewer-shell,
+  .control-panel,
+  .empty-state,
+  #result-root > section:not(.output-card),
+  .output-card .section-heading,
+  .log-drawer,
+  .drawer-backdrop,
+  .toast {
+    display: none !important;
+  }
+
+  .layout,
+  .workspace,
+  #result-root,
+  .output-card {
+    display: block !important;
+    max-width: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
+  .print-meta {
+    display: block !important;
+    padding-bottom: 12px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid #bbb;
+  }
+  .print-meta h1 { margin: 4px 0 8px; font-size: 22px; }
+  .print-meta p { margin: 3px 0; font-size: 10px; color: #555; }
+  .print-kicker { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: #666; }
+
+  .document-output { max-width: none !important; }
+  .document-output h1 { font-size: 22px; }
+  .document-output h2 { font-size: 16px; break-after: avoid; }
+  .document-output h3 { font-size: 13px; break-after: avoid; }
+  .claim { font-size: 11px; line-height: 1.65; }
+  .citation-btn {
+    border: 0 !important;
+    background: transparent !important;
+    color: #555 !important;
+    padding: 0 2px !important;
+    font-size: 8px !important;
+  }
+  .source-visual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .source-visual-card,
+  .faq-output-card,
+  .structured-output-card,
+  .capability-card,
+  .output-intro,
+  .blog-lead,
+  .output-conclusion,
+  .product-hero {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+  .source-visual-card img { max-height: 150mm; object-fit: contain; }
+  a { color: inherit !important; text-decoration: none !important; }
+}
